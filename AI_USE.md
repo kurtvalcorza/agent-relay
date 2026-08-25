@@ -8,12 +8,12 @@ AI systems were used to help:
 
 - explore and refine the coordination model;
 - draft and revise the Agent Skill instructions and reference documentation;
-- design role, handoff, evidence, and verification conventions;
+- design role, automatic role-routing, handoff, evidence, and verification conventions;
 - produce examples and templates;
 - review wording, consistency, portability, and public-release safety;
-- generate and review small supporting scripts.
+- generate and review small supporting scripts and tests.
 
-The project emerged from practical multi-agent engineering workflows in which different AI agents were deliberately assigned roles such as builder, reviewer, executor, verifier, and integrator.
+The project emerged from practical multi-agent engineering workflows in which different AI agents were deliberately assigned roles such as builder, reviewer, executor, verifier, and integrator. The automatic role-routing feature generalized that practice so agents can infer the next appropriate role from task intent and durable workflow state while preserving explicit human permissions and constraints.
 
 ## Human responsibility
 
