@@ -1,0 +1,32 @@
+# AI Use Disclosure
+
+Agent Relay was developed with substantial AI assistance under human direction and review.
+
+## How AI was used
+
+AI systems were used to help:
+
+- explore and refine the coordination model;
+- draft and revise the Agent Skill instructions and reference documentation;
+- design role, handoff, evidence, and verification conventions;
+- produce examples and templates;
+- review wording, consistency, portability, and public-release safety;
+- generate and review small supporting scripts.
+
+The project emerged from practical multi-agent engineering workflows in which different AI agents were deliberately assigned roles such as builder, reviewer, executor, verifier, and integrator.
+
+## Human responsibility
+
+The maintainer directed the project, selected the design goals and name, approved the protocol and public contents, chose the license, and remains responsible for the repository and its releases.
+
+AI-generated material should not be interpreted as an independent warranty, security review, legal opinion, or guarantee of correctness. Users should review the skill and adapt it to their own environment, permissions, and risk model.
+
+## Systems involved
+
+Development and review involved AI assistants from multiple providers, including OpenAI ChatGPT and Anthropic Claude, at different stages of the originating workflow.
+
+No claim is made that these providers endorse Agent Relay.
+
+## Disclosure principle
+
+Agent Relay treats AI contribution itself as provenance: consequential AI-assisted work should be attributable at an appropriate level without exposing private chain-of-thought, credentials, sensitive data, or confidential project context.
