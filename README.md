@@ -185,6 +185,9 @@ Agent Relay follows the Agent Skills directory pattern:
 agent-relay/
 ├── SKILL.md
 ├── README.md
+├── AI_USE.md
+├── PROVENANCE.md
+├── LICENSE
 ├── assets/
 ├── references/
 └── scripts/
@@ -210,6 +213,15 @@ agent-relay/
 │
 ├── README.md
 │   Human-facing overview and quick start.
+│
+├── AI_USE.md
+│   Disclosure of AI-assisted development and human responsibility.
+│
+├── PROVENANCE.md
+│   Public origin, authorship context, and provenance expectations.
+│
+├── LICENSE
+│   MIT License.
 │
 ├── references/
 │   ├── roles.md
@@ -254,6 +266,14 @@ Agent Relay distinguishes at least two progress dimensions:
 
 This avoids statements such as "100% complete" when implementation is finished but required evidence is still missing.
 
+## AI use and provenance
+
+Agent Relay was developed with substantial AI assistance under human direction and review. Development and review involved AI assistants from multiple providers, including OpenAI ChatGPT and Anthropic Claude, while the maintainer retained responsibility for scope, design decisions, public contents, and release decisions.
+
+See [`AI_USE.md`](AI_USE.md) for the AI use disclosure and [`PROVENANCE.md`](PROVENANCE.md) for the project's public provenance record.
+
+The project deliberately treats material AI assistance as provenance while avoiding disclosure of private chain-of-thought, credentials, sensitive data, or confidential project context.
+
 ## What Agent Relay is not
 
 Agent Relay is not:
@@ -287,4 +307,4 @@ Protocol identifier: **`agent-relay-v1`**
 
 ## License
 
-No license is bundled yet. Add one before distributing Agent Relay as an open-source package.
+Agent Relay is licensed under the [MIT License](LICENSE).
