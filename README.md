@@ -1,6 +1,6 @@
 # Agent Relay
 
-**Agent Relay** is an agent-agnostic coordination skill for handing work between independent AI agents or agent sessions using explicit roles, durable state, reproducible evidence, and structured handoffs.
+**Agent Relay** is an agent-agnostic coordination skill for handing work between independent AI agents or agent sessions using automatic role routing, durable state, reproducible evidence, and structured handoffs.
 
 It is designed for workflows where different agents have different strengths or environments—for example, one agent builds, another reviews, another has local GPU/Docker access, and a fourth integrates the result.
 
@@ -22,17 +22,48 @@ Agent Relay provides a lightweight protocol for avoiding those failure modes.
 
 ## The five roles
 
-Agent Relay uses five reusable roles. They describe responsibilities, not products or identities.
-
 | Role | Responsibility |
 | --- | --- |
-| **Builder** | Implements the change or produces the primary artifact. |
-| **Reviewer** | Adversarially inspects the work and reports concrete findings. |
+| **Builder** | Implements a change or produces the primary artifact. |
+| **Reviewer** | Adversarially inspects work and reports concrete findings. |
 | **Executor** | Runs tasks requiring a specific local environment, tool, credential, hardware, or network. |
-| **Verifier** | Reproduces claims and converts assertions into executable or inspectable evidence. |
-| **Integrator** | Reconciles findings, places fixes in the correct ownership layer, and decides readiness. |
+| **Verifier** | Reproduces claims and turns assertions into executable or inspectable evidence. |
+| **Integrator** | Reconciles findings, ownership layers, branches, evidence, and readiness decisions. |
 
-The same agent can hold different roles at different stages. When practical, the builder should not be the sole verifier of its own work.
+Roles describe responsibilities, not products or identities. The same agent can hold different roles at different stages.
+
+## Automatic role routing
+
+Starting with **v0.2.0**, Agent Relay can infer the role needed from the task and live workflow state. You should not have to assign a role manually for every turn.
+
+Examples:
+
+| Situation | Inferred route |
+| --- | --- |
+| `Implement this change` | `Builder` |
+| `Review this PR` | `Reviewer` |
+| `Review and sign off if clean` | `Reviewer -> Verifier` |
+| `Review this and fix what you find` | `Reviewer -> Integrator -> Builder -> Verifier` |
+| `Fix the reported finding` | `Integrator -> Builder -> Verifier` when an unresolved finding exists |
+| `Run this under WSL/CUDA locally` | `Executor` or handoff to an Executor |
+| `Confirm that this fix actually works` | `Verifier` |
+| `Reconcile these two reviews` | `Integrator` |
+| `Continue` | inferred from the current durable state |
+
+Routing precedence is conservative:
+
+1. explicit user role assignment;
+2. mutation and safety boundaries;
+3. environment feasibility;
+4. live workflow state;
+5. task intent;
+6. conservative default.
+
+Role routing **never grants permissions**. Inferring `Builder` does not create write access; inferring `Integrator` does not authorize merge; inferring `Reviewer` does not authorize public comments; inferring `Executor` does not grant credentials or private-data access.
+
+Before sign-off, approval, declaring a finding fixed, resolving a thread because it is said to be fixed, declaring a gate PASS, recommending merge based on correctness, or declaring release/readiness/stability, Agent Relay automatically requires **Verifier behavior** unless adequate current evidence already exists.
+
+See [`references/role-routing.md`](references/role-routing.md). A small non-normative reference router is available at [`scripts/infer_role.py`](scripts/infer_role.py).
 
 ## How it works
 
@@ -62,109 +93,38 @@ The shared substrate can be Git, GitHub, a document store, experiment tracker, d
 
 1. **Durable state beats conversational memory.**
 2. **Evidence beats assertions.**
-3. **Explicit mutation boundaries survive every handoff.**
+3. **Explicit mutation boundaries survive every role change and handoff.**
 4. **Prefer immutable references** such as commit SHAs, content digests, exact artifact IDs, or versioned documents.
 5. **Do not relay private chain-of-thought.** Relay decisions, evidence, findings, commands, constraints, and unresolved questions.
-6. **Do not claim unexecuted verification.** Hand it to an Executor instead.
+6. **Do not claim unexecuted verification.** Route it to an Executor instead.
 7. **Every finding must converge** to `FIXED`, `DISPROVED`, `DEFERRED`, or `BLOCKED`.
 8. **Fix the owning layer**, then propagate downstream.
-9. **Verify before resolving** a review thread, gate, or blocker.
+9. **Verify before resolving** a review thread, gate, blocker, or consequential readiness claim.
 10. **Implementation completeness and release readiness are separate states.**
 
 ## Quick start
 
-### 1. Assign a role
+Install the skill, point the agent at the durable task state, and work normally. Explicit roles are optional.
 
 ```text
-You are the Reviewer for this pass.
-Inspect the current repository head, reproduce existing claims where possible,
-and report concrete findings with severity and evidence.
+Review this PR and fix anything that is genuinely blocking.
 ```
 
-### 2. Identify the durable substrate
+Agent Relay should infer something like:
 
 ```text
-Repository: example/project
-PR: #42
-Reviewed head: 3f4c1a2...
+Reviewer -> Integrator -> Builder -> Verifier
 ```
 
-### 3. State mutation boundaries explicitly
+If the decisive evidence requires an unavailable environment:
 
 ```text
-Allowed to mutate:
-- example/project
-
-Strictly read-only:
-- upstream/model-worker
-- production/backend
+Run the CUDA path locally and tell me whether the release gate can pass.
 ```
 
-Read-only means no commits, comments, issues, PRs, labels, branches, file edits, or other mutations unless the user explicitly revokes that constraint.
+Agent Relay should route the unavailable portion to an Executor with a structured packet containing the immutable source revision, required environment, mutation boundaries, exact experiment, acceptance criteria, and evidence to return.
 
-### 4. Hand off executable work precisely
-
-Instead of:
-
-```text
-Please test this on Linux.
-```
-
-send:
-
-```text
-Role: Executor
-Environment: Ubuntu 24.04 / Python 3.10 / NVIDIA Docker
-Source revision: 3f4c1a2...
-Mission: execute the full test suite and symlink-containment tests
-Acceptance criteria:
-- zero unexpected failures
-- symlink tests actually execute rather than skip
-Evidence to return:
-- uname / Python version
-- exact commands
-- pytest counts
-- skipped tests
-- relevant logs
-Do not mutate the upstream repositories.
-```
-
-The included `assets/HANDOFF.md` template formalizes this packet.
-
-## Example: software engineering relay
-
-```text
-Agent A — Builder
-  Implements the feature and regression tests.
-
-Agent B — Reviewer
-  Tries to break the implementation and leaves source-linked findings.
-
-Agent C — Executor
-  Runs WSL, Docker, GPU, or private-local tests unavailable to A/B.
-
-Agent A — Integrator
-  Reproduces the findings, fixes the earliest owning layer, and restacks.
-
-Agent B — Verifier
-  Re-runs the discriminating tests and closes only verified findings.
-```
-
-GitHub can act as the shared coordination substrate, but GitHub is not required by the protocol.
-
-## Example: research relay
-
-Agent Relay is not limited to coding.
-
-```text
-Builder     → drafts the literature synthesis
-Reviewer    → challenges unsupported claims
-Executor    → queries a database or local corpus unavailable to the others
-Verifier    → checks citations and reproduces calculations
-Integrator  → reconciles conflicts and publishes the final synthesis
-```
-
-The same evidence and handoff rules apply.
+Use [`assets/HANDOFF.md`](assets/HANDOFF.md) for substantive handoffs.
 
 ## Finding lifecycle
 
@@ -190,17 +150,16 @@ agent-relay/
 ├── LICENSE
 ├── assets/
 ├── references/
-└── scripts/
+├── scripts/
+└── tests/
 ```
 
-Install or load the **entire `agent-relay/` directory** in any environment that supports Agent Skills-style skill bundles.
+Install or load the **entire `agent-relay/` directory** in an environment that supports Agent Skills-style bundles.
 
-If a client does not provide a dedicated skill installer, `SKILL.md` can still be loaded as the governing instruction file and its referenced resources made available alongside it.
+Two packaged forms may be built from the source tree:
 
-Two packaged forms may be produced from this source tree:
-
-- `agent-relay.zip` — standard portable archive of the skill directory;
-- `agent-relay.skill` — the same ZIP-compatible bundle using a convenient skill extension for clients that accept it.
+- `agent-relay.zip` — portable archive;
+- `agent-relay.skill` — the same ZIP-compatible bundle with a convenient skill extension for clients that accept it.
 
 Exact installation paths and UI vary by agent/client.
 
@@ -210,31 +169,54 @@ Exact installation paths and UI vary by agent/client.
 agent-relay/
 ├── SKILL.md
 │   Core activation metadata and protocol.
-│
 ├── README.md
 │   Human-facing overview and quick start.
-│
 ├── AI_USE.md
-│   Disclosure of AI-assisted development and human responsibility.
-│
+│   AI-assisted development disclosure.
 ├── PROVENANCE.md
-│   Public origin, authorship context, and provenance expectations.
-│
+│   Public origin and provenance record.
 ├── LICENSE
 │   MIT License.
-│
 ├── references/
 │   ├── roles.md
+│   ├── role-routing.md
 │   ├── evidence-protocol.md
 │   ├── local-execution.md
 │   └── repository-coordination.md
-│
 ├── assets/
 │   ├── HANDOFF.md
 │   └── AGENT-PASS.md
-│
-└── scripts/
-    └── validate_handoff.py
+├── scripts/
+│   ├── infer_role.py
+│   └── validate_handoff.py
+└── tests/
+    └── test_infer_role.py
+```
+
+## Reference role router
+
+The router is intentionally small and conservative. It demonstrates the protocol; it is not the normative definition of role routing.
+
+```bash
+python scripts/infer_role.py "Review this PR and sign off if clean"
+```
+
+Example output:
+
+```json
+{
+  "inferred": "reviewer",
+  "confidence": "high",
+  "reason": "Review request includes consequential sign-off",
+  "sequence": ["reviewer", "verifier"],
+  "handoff_required": false
+}
+```
+
+Run the router tests with:
+
+```bash
+python -m unittest discover -s tests -v
 ```
 
 ## Agent pass records
@@ -255,24 +237,24 @@ Unverified: Python 3.10, CUDA path
 Next recommended role/pass: Builder — repair findings F-002..F-004
 ```
 
-The record is an index to the evidence—not the evidence itself.
+The record is an index to evidence, not proof itself.
 
 ## Progress reporting
 
-Agent Relay distinguishes at least two progress dimensions:
+Agent Relay distinguishes at least two dimensions:
 
 - **implementation progress** — work that can be completed inside the shared artifact or repository;
 - **release/evidence progress** — external execution, CI, production qualification, governance, hardware, independent verification, or other gates.
 
-This avoids statements such as "100% complete" when implementation is finished but required evidence is still missing.
+This avoids calling something "100% complete" when implementation is finished but required evidence is still missing.
 
 ## AI use and provenance
 
 Agent Relay was developed with substantial AI assistance under human direction and review. Development and review involved AI assistants from multiple providers, including OpenAI ChatGPT and Anthropic Claude, while the maintainer retained responsibility for scope, design decisions, public contents, and release decisions.
 
-See [`AI_USE.md`](AI_USE.md) for the AI use disclosure and [`PROVENANCE.md`](PROVENANCE.md) for the project's public provenance record.
+See [`AI_USE.md`](AI_USE.md) and [`PROVENANCE.md`](PROVENANCE.md).
 
-The project deliberately treats material AI assistance as provenance while avoiding disclosure of private chain-of-thought, credentials, sensitive data, or confidential project context.
+The project treats material AI assistance as provenance while avoiding disclosure of private chain-of-thought, credentials, sensitive data, or confidential project context.
 
 ## What Agent Relay is not
 
@@ -284,25 +266,18 @@ Agent Relay is not:
 - a replacement for tests or source control;
 - a way to transfer private chain-of-thought;
 - a GitHub-specific workflow;
+- a permission-escalation mechanism;
 - a reason to trust one model's conclusions over another's evidence.
 
 It is a **coordination protocol for independent agents operating over shared durable state**.
 
 ## Design goals
 
-Agent Relay aims to remain:
-
-- **agent-agnostic**
-- **tool-agnostic**
-- **role-based**
-- **evidence-first**
-- **portable**
-- **fail-closed**
-- **human-governed**
+Agent Relay aims to remain **agent-agnostic, tool-agnostic, role-based, evidence-first, portable, fail-closed, and human-governed**.
 
 ## Version
 
-Current skill version: **0.1.0**  
+Current skill version: **0.2.0**  
 Protocol identifier: **`agent-relay-v1`**
 
 ## License
