@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Lightweight structural validator for Agent Relay Markdown handoffs.
 
-Uses only the Python standard library. It does not interpret correctness or
-permissions; it checks that a handoff contains the minimum resumability fields.
+Uses only the Python standard library. It does not interpret correctness,
+permissions, or whether a role route is semantically appropriate; it checks
+that a handoff contains the minimum resumability and routing fields.
 """
 
 from __future__ import annotations
@@ -14,6 +15,8 @@ import sys
 REQUIRED_HEADINGS = (
     "Mission",
     "Current role",
+    "Role source",
+    "Recommended role sequence",
     "Authoritative substrate",
     "Current immutable snapshot",
     "Mutation permissions",
@@ -21,6 +24,7 @@ REQUIRED_HEADINGS = (
     "Verified evidence",
     "Open findings",
     "Ordered next actions",
+    "Verification checkpoint",
     "Completion criteria",
 )
 
@@ -40,7 +44,15 @@ def validate(text: str) -> list[str]:
     if "read-only" not in lowered and "forbidden" not in lowered:
         errors.append("mutation boundary is not explicit (no read-only/forbidden statement)")
 
-    if "<commit" in lowered or "<digest" in lowered or "<what outcome" in lowered:
+    placeholders = (
+        "<commit",
+        "<digest",
+        "<what outcome",
+        "<builder | reviewer",
+        "<explicit user assignment",
+        "<e.g. executor",
+    )
+    if any(token in lowered for token in placeholders):
         errors.append("template placeholders appear to remain unfilled")
 
     return errors
