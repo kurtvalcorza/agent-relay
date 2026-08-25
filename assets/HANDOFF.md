@@ -6,8 +6,14 @@
 ## Current role
 <Builder | Reviewer | Executor | Verifier | Integrator>
 
-## Recommended next role
-<Which role should receive this and why?>
+## Role source
+<Explicit user assignment | Inferred from workflow state>
+
+## Recommended role sequence
+<e.g. Executor -> Verifier -> Integrator>
+
+## Handoff reason
+<Why another agent/session/environment is needed, or N/A>
 
 ## Authoritative substrate
 <Repository / PR stack / document set / dataset / issue tracker / experiment store / etc.>
@@ -47,6 +53,9 @@
 
 ## Local execution procedure
 <Only when another environment is required. Include commands/observables/acceptance criteria.>
+
+## Verification checkpoint
+<What claim/action must be independently verified before sign-off, closure, merge-readiness, or PASS?>
 
 ## Completion criteria
 - <criterion>
