@@ -26,22 +26,35 @@ Human maintainer:
 
 AI-assisted development and review included:
 
-- OpenAI ChatGPT — primary drafting, protocol synthesis, packaging, and public-release preparation;
+- OpenAI ChatGPT — primary drafting, protocol synthesis, packaging, public-release preparation, and automatic role-routing design;
 - Anthropic Claude — independent review and local-execution patterns that materially informed the protocol's evidence and handoff model.
 
 The maintainer selected the project name, directed scope and design decisions, approved the public contents, and chose the MIT License.
+
+## v0.2.0 — automatic role routing
+
+The v0.2.0 revision added automatic role routing so an agent can infer whether the current work calls for Builder, Reviewer, Executor, Verifier, or Integrator behavior from task intent and durable workflow state.
+
+The feature was deliberately constrained by three provenance and governance principles:
+
+1. explicit human role instructions take precedence;
+2. role inference never creates permissions or weakens mutation boundaries;
+3. consequential readiness, sign-off, and closure claims require Verifier behavior unless adequate current evidence already exists.
+
+A small deterministic reference router and tests were added as examples. The normative behavior remains the written protocol in `SKILL.md` and `references/role-routing.md` rather than any one heuristic implementation.
 
 ## Source-of-truth principle
 
 This repository is the source of truth for the public Agent Relay specification and templates.
 
-Where historical discussions, agent summaries, or generated artifacts disagree with the committed repository, the committed source at an identified revision should take precedence.
+Where historical discussions, agent summaries, generated packages, or other artifacts disagree with the committed repository, committed source at an identified revision should take precedence.
 
 ## Provenance expectations for downstream use
 
 Agent Relay encourages downstream users to record, when useful:
 
 - the agent or system role;
+- whether the role was explicit or inferred;
 - the source revision or artifact identifier;
 - the execution environment;
 - commands or procedures used;
