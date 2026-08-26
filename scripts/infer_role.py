@@ -136,6 +136,29 @@ def _normalize_explicit_lenses(values: tuple[str, ...] | list[str] | None) -> tu
     return normalized
 
 
+def _infer_build_intent(text: str) -> bool:
+    """Infer mutation intent from command-like phrasing, not artifact nouns."""
+
+    direct_mutation = _has(
+        text,
+        r"\bimplement\b",
+        r"\bfix\b(?=\s+(?:this|that|the|it|what|anything|all|any|reported|blocking|blockers?|findings?|bugs?|defects?|issues?|code|implementation|problem))",
+        r"\brepair\b(?=\s+(?:this|that|the|it|all|any|findings?|bugs?|defects?|issues?|code|implementation|problem))",
+        r"\badd (?:a |the )?(?:test|tests|feature|file|support)\b",
+    )
+    if direct_mutation:
+        return True
+
+    command_verbs = r"(?:build|update|revise|refactor)"
+    return _has(
+        text,
+        rf"^\s*(?:please\s+)?{command_verbs}\b",
+        rf"\b(?:and|then|please|also)\s+{command_verbs}\b",
+        rf"\b(?:can|could|would|will)\s+you\s+{command_verbs}\b",
+        rf"\b(?:want|need)\s+(?:you\s+)?to\s+{command_verbs}\b",
+    )
+
+
 def infer_role(
     task: str,
     *,
@@ -207,17 +230,7 @@ def infer_role(
     )
     verify = _has(text, r"\bverify\b", r"\bconfirm\b", r"\breproduce\b", r"check whether")
 
-    build = _has(
-        text,
-        r"\bbuild\b",
-        r"\bimplement\b",
-        r"\bfix\b(?=\s+(?:this|that|the|it|what|anything|all|any|reported|blocking|blockers?|findings?|bugs?|defects?|issues?|code|implementation|problem))",
-        r"\brepair\b(?=\s+(?:this|that|the|it|all|any|findings?|bugs?|defects?|issues?|code|implementation|problem))",
-        r"\bupdate\b",
-        r"\brevise\b",
-        r"\brefactor\b",
-        r"\badd (?:a |the )?(?:test|tests|feature|file|support)\b",
-    )
+    build = _infer_build_intent(text)
     if mutation_forbidden:
         build = False
 
