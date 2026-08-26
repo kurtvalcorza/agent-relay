@@ -139,6 +139,79 @@ A Reviewer identifies and characterizes findings. A Verifier establishes whether
 
 A review finding does not become `FIXED` merely because another agent reports a code change. Reproduce or inspect the discriminating evidence first.
 
+## Worked end-to-end finding lifecycle
+
+This example shows how a finding moves through the relay instead of ending as an unverified review comment.
+
+### 1. Reviewer opens the finding
+
+At immutable snapshot `a1b2c3d`, `Reviewer[standard]` identifies `F-007`:
+
+```text
+F-007 · high · standard
+Reviewed snapshot: a1b2c3d
+Failure condition: retrying the operation after a partial write creates a duplicate record.
+Expected behavior: retry is idempotent and preserves one logical record.
+Observed behavior: the second attempt inserts a second record.
+Evidence: regression reproduction on a1b2c3d; 2 records observed after one retry.
+Owning layer: persistence adapter
+State: OPEN
+```
+
+The Reviewer has identified and reproduced the failure, but does not self-authorize a fix or declare readiness.
+
+### 2. Integrator adjudicates ownership
+
+The Integrator confirms that the persistence adapter, not the caller, owns idempotency. The finding remains `OPEN`, and the next route is:
+
+```text
+Integrator -> Builder -> Verifier
+```
+
+The Integrator records the owning layer and preserves the original reviewed snapshot `a1b2c3d` as the failure baseline.
+
+### 3. Builder repairs the owning layer
+
+The Builder changes the persistence adapter and adds a regression test. The repaired state is a new immutable snapshot, `d4e5f6a`.
+
+The Builder may report:
+
+```text
+Changed snapshot: d4e5f6a
+Regression added: retry_after_partial_write_is_idempotent
+Builder evidence: targeted test passes locally
+Finding state: OPEN pending independent verification
+```
+
+The finding is **not yet `FIXED`** merely because code changed or the Builder's local test passed.
+
+### 4. Verifier reproduces the discriminating evidence
+
+The Verifier starts from `d4e5f6a`, reruns the regression, and checks the surrounding invariant:
+
+```text
+Linux / x86_64 / CPython 3.12
+retry_after_partial_write_is_idempotent: PASS
+broader persistence suite: 42 passed, 0 skipped
+observed records after retry: 1
+```
+
+The evidence now distinguishes the repaired state from the original failure at `a1b2c3d`.
+
+### 5. Finding closes as `FIXED`
+
+Only after verification does the durable finding become:
+
+```text
+F-007
+Failure snapshot: a1b2c3d
+Verified fixed snapshot: d4e5f6a
+State: FIXED
+Verification: Linux / x86_64 / CPython 3.12 — targeted regression PASS; persistence suite 42 passed, 0 skipped
+```
+
+If the regression had failed, the finding would remain `OPEN` or become `BLOCKED`; if the alleged failure could not exist under the stated condition, it could become `DISPROVED`. This lifecycle is why Agent Relay treats review findings as durable evidence-bearing state rather than disposable prose.
+
 ## Review provenance
 
 A durable review may record the agent/client that generated it, the model when reliably known, the Agent Relay role, selected lenses, and reviewed snapshot.
