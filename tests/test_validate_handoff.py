@@ -45,6 +45,51 @@ Agent Relay role: Reviewer
 Source snapshot: abc123
 """
 
+LEGACY_HANDOFF = """# Agent Relay Handoff
+
+## Mission
+Continue the work.
+
+## Current role
+Reviewer
+
+## Role source
+Inferred from workflow state
+
+## Recommended role sequence
+Reviewer -> Verifier
+
+## Authoritative substrate
+Repository
+
+## Current immutable snapshot
+- Primary state: abc123
+
+## Mutation permissions
+### Allowed
+- none
+### Strictly read-only / forbidden
+- repository writes
+
+## Completed work
+- review completed
+
+## Verified evidence
+- source inspection at abc123
+
+## Open findings
+- none
+
+## Ordered next actions
+1. verify
+
+## Verification checkpoint
+Verify the reviewed claim.
+
+## Completion criteria
+- verification complete
+"""
+
 
 class RecordValidatorTests(unittest.TestCase):
     def test_review_record_is_auto_detected(self):
@@ -67,6 +112,9 @@ class RecordValidatorTests(unittest.TestCase):
     def test_review_template_placeholders_fail(self):
         text = VALID_REVIEW.replace("test agent", "<agent/client>")
         self.assertIn("template placeholders appear to remain unfilled", validate(text))
+
+    def test_v02_handoff_without_new_optional_headings_remains_valid(self):
+        self.assertEqual(validate(LEGACY_HANDOFF), [])
 
 
 if __name__ == "__main__":
