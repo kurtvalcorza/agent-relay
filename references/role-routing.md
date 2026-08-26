@@ -13,7 +13,7 @@ Apply these inputs in order:
 5. **Task intent** — infer from what must actually happen, not only from keywords.
 6. **Conservative default** — when state is genuinely ambiguous, prefer Reviewer for inspection-only work and Builder for explicitly authorized change work. Ask only when the ambiguity changes permissions, risk, or expected outcome.
 
-Review lens selection is orthogonal to role assignment. An explicit `Reviewer` role may still carry an inferred or explicit lens. An explicit non-Reviewer role does not inherit a review lens merely because the task mentions review subject matter.
+Review lens selection is orthogonal to role assignment. An explicit `Reviewer` role may still carry an inferred or explicit lens. An explicit non-Reviewer role must not silently accept a review lens; the reference router treats that combination as invalid rather than discarding the lens.
 
 ## Canonical role signals
 
@@ -24,11 +24,14 @@ Use Builder when the next required action is to create, implement, repair, refac
 Typical signals:
 - implement this;
 - fix the finding;
+- fix CI;
 - update the spec;
 - revise the document;
 - add tests.
 
-Do not infer mutation intent from a noun alone. For example, `review the security fix (read-only)` describes the artifact under review; `fix` there is not authorization to modify it.
+Mutation verbs are interpreted from command-like intent, not merely because their noun form occurs in the task. For example, `review the security fix (read-only)` describes the artifact under review; `fix` there is not authorization to modify it. Conversely, ordinary imperatives such as `Fix a typo`, `Fix CI`, and `fix flaky tests` are Builder requests without requiring an object whitelist.
+
+A scoped prohibition does not cancel an otherwise authorized mutation. `Update the documentation, but do not edit source files` remains Builder work with `source files` preserved as a forbidden surface. `Refactor the parser without changing behavior` remains Builder work with behavior preservation as a constraint. Whole-task prohibitions such as an explicit read-only request or `no mutations` still suppress mutation routing.
 
 ### Reviewer
 
@@ -40,6 +43,8 @@ Typical signals:
 - find bugs;
 - challenge the design;
 - assess merge readiness.
+
+Review/audit verbs follow the same intent discipline as mutation verbs. `Review this PR` is Reviewer work; `Implement the review lens`, `Update the review template`, and `Fix the bug in assets/REVIEW.md` are Builder tasks even though they contain the word `review` as artifact vocabulary.
 
 Reviewer may carry one or more lenses defined in [`review-lenses.md`](review-lenses.md). `standard` is the default. `design` is selected by unambiguous intent such as `adversarial review`, `design review`, or `challenge the assumptions`; every Reviewer pass remains adversarial in posture.
 
@@ -80,7 +85,7 @@ Typical signals:
 - adjudicate conflicting results;
 - determine what still blocks readiness.
 
-The Integrator owns the final readiness/progress decision. `Reviewer[readiness]` produces an evidence-gap assessment and normally routes to `Verifier -> Integrator`.
+The Integrator owns the final readiness/progress decision. `Reviewer[readiness]` produces an evidence-gap assessment and normally routes to `Verifier -> Integrator`. This remains true when `readiness` is selected explicitly through the reference router rather than inferred from task text.
 
 ## Role sequences
 
@@ -121,7 +126,9 @@ The valid lenses are:
 
 The reference router automatically supports `standard` and `design` as the primary v1 inference surface and recognizes the other lenses only from explicit/unambiguous intent phrases. It should remain conservative rather than classify by broad topic nouns.
 
-Lenses may compose when multiple review intents are explicit. Use an ordered list representation such as:
+Recognized lens intent can itself activate Reviewer routing even when the exact word `review` is absent. Examples include `Assess retry and recovery behavior`, `Identify the test gaps`, and `Check this implementation against the specification`.
+
+Lenses may compose when multiple review intents are explicit. Coordinated forms such as `security and reliability review` or `review this PR for security and reliability` retain both lenses. Use an ordered list representation such as:
 
 ```json
 "review_lenses": ["design", "security"]
@@ -161,7 +168,7 @@ Role/lens routing never grants capabilities.
 
 `Builder` does not imply write permission. `Integrator` does not imply permission to merge. `Reviewer` does not imply permission to comment publicly. `Executor` does not imply permission to access credentials or private data. A `security`, `design`, or other lens adds no authority.
 
-Before mutating durable state, independently confirm that the requested mutation is authorized.
+Before mutating durable state, independently confirm that the requested mutation is authorized. Scoped prohibitions remain binding even when the active role is Builder; the reference router's role result is not a substitute for carrying the original mutation boundary.
 
 ## Handoff trigger
 
