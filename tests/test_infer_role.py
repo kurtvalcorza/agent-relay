@@ -31,6 +31,19 @@ class RoleRouterTests(unittest.TestCase):
         self.assertEqual(route.sequence, ("reviewer", "integrator", "builder", "verifier"))
         self.assertEqual(route.review_lenses, ("standard",))
 
+    def test_design_review_fix_and_signoff_is_a_sequence(self):
+        route = infer_role("Adversarially review this design, fix blockers, then sign off")
+        self.assertEqual(route.sequence, ("reviewer", "integrator", "builder", "verifier"))
+        self.assertEqual(route.review_lenses, ("design",))
+
+    def test_readiness_review_fix_returns_to_integrator(self):
+        route = infer_role("Assess merge readiness, fix blockers, then verify")
+        self.assertEqual(
+            route.sequence,
+            ("reviewer", "integrator", "builder", "verifier", "integrator"),
+        )
+        self.assertEqual(route.review_lenses, ("readiness",))
+
     def test_signoff_requires_verifier(self):
         route = infer_role("Review this PR and sign off if clean")
         self.assertEqual(route.sequence, ("reviewer", "verifier"))
