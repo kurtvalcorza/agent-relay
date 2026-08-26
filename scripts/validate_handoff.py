@@ -12,10 +12,11 @@ import argparse
 from pathlib import Path
 import sys
 
+# Preserve the v0.2 handoff minimum so previously valid handoffs remain valid.
+# v0.3 templates add Review lenses and Provenance as recommended transport fields.
 HANDOFF_REQUIRED_HEADINGS = (
     "Mission",
     "Current role",
-    "Review lenses",
     "Role source",
     "Recommended role sequence",
     "Authoritative substrate",
@@ -27,7 +28,6 @@ HANDOFF_REQUIRED_HEADINGS = (
     "Ordered next actions",
     "Verification checkpoint",
     "Completion criteria",
-    "Provenance",
 )
 
 REVIEW_REQUIRED_HEADINGS = (
