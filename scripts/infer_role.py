@@ -211,8 +211,8 @@ def infer_role(
         text,
         r"\bbuild\b",
         r"\bimplement\b",
-        r"\bfix\b(?=\s+(?:this|that|the|it|what|anything|finding|bug|defect|issue|code|implementation|problem|reported))",
-        r"\brepair\b(?=\s+(?:this|that|the|it|finding|bug|defect|issue|code|implementation|problem))",
+        r"\bfix\b(?=\s+(?:this|that|the|it|what|anything|all|any|reported|blocking|blockers?|findings?|bugs?|defects?|issues?|code|implementation|problem))",
+        r"\brepair\b(?=\s+(?:this|that|the|it|all|any|findings?|bugs?|defects?|issues?|code|implementation|problem))",
         r"\bupdate\b",
         r"\brevise\b",
         r"\brefactor\b",
@@ -263,14 +263,15 @@ def infer_role(
         )
 
     if review and build:
-        seq = ["reviewer", "integrator", "builder", "verifier"]
-        if signoff or readiness_review:
-            seq.append("integrator")
+        if readiness_review:
+            seq = ("reviewer", "integrator", "builder", "verifier", "integrator")
+        else:
+            seq = ("reviewer", "integrator", "builder", "verifier")
         return Route(
             "reviewer",
             "high",
             "Task combines review and authorized repair",
-            _dedupe(seq),
+            seq,
             False,
             review_lenses,
         )
