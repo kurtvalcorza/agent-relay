@@ -85,6 +85,29 @@ class RoleRouterTests(unittest.TestCase):
         self.assertEqual(route.sequence, ("builder",))
         self.assertNotIn("review_lenses", route.to_dict())
 
+    def test_command_style_build_verbs_still_mutate(self):
+        for task in (
+            "Build the feature",
+            "Can you update the spec?",
+            "Review this PR and update the docs",
+            "Please revise the document",
+            "Then refactor the parser",
+        ):
+            with self.subTest(task=task):
+                route = infer_role(task)
+                self.assertIn("builder", route.sequence)
+
+    def test_artifact_nouns_do_not_authorize_mutation(self):
+        for task in (
+            "Review the build",
+            "Review the update",
+            "Review the refactor",
+        ):
+            with self.subTest(task=task):
+                route = infer_role(task)
+                self.assertEqual(route.sequence, ("reviewer",))
+                self.assertNotIn("builder", route.sequence)
+
     def test_ambiguous_default_is_non_mutating_standard_review(self):
         route = infer_role("continue")
         self.assertEqual(route.inferred, "reviewer")
