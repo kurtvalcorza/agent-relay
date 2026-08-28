@@ -49,6 +49,7 @@ REVIEW_REQUIRED_HEADINGS = (
 PASS_REQUIRED_PREFIXES = (
     "Agent pass:",
     "Role:",
+    "Review lenses:",
     "Role source:",
     "Role sequence:",
     "Reviewed/modified snapshot:",
@@ -75,8 +76,43 @@ _TITLE_KIND = {
 _PLACEHOLDER_RE = re.compile(r"<[^>\n]+>")
 
 
-def _top_level_title(text: str) -> str | None:
+_FENCE_RE = re.compile(r"^\s*(?P<marker>`{3,}|~{3,})\s*(?P<info>\S*)")
+
+
+def _outside_fences(text: str) -> list[str]:
+    """Return the record's lines with fenced blocks blanked out.
+
+    Markdown inside a fence is an example or a pasted template, never the
+    record's own structure, so it must not satisfy a required heading.
+    Blank lines replace fenced content to keep line positions stable.
+    """
+
+    lines: list[str] = []
+    open_marker: str | None = None
     for line in text.splitlines():
+        match = _FENCE_RE.match(line)
+        if open_marker is None:
+            if match:
+                open_marker = match.group("marker")
+                lines.append("")
+                continue
+            lines.append(line)
+            continue
+        # Inside a fence: only a same-character, at-least-as-long, bare
+        # marker closes it.
+        if (
+            match
+            and match.group("marker")[0] == open_marker[0]
+            and len(match.group("marker")) >= len(open_marker)
+            and not match.group("info")
+        ):
+            open_marker = None
+        lines.append("")
+    return lines
+
+
+def _top_level_title(text: str) -> str | None:
+    for line in _outside_fences(text):
         if line.startswith("# ") and not line.startswith("## "):
             return line[2:].strip()
     return None
@@ -85,7 +121,7 @@ def _top_level_title(text: str) -> str | None:
 def _headings(text: str) -> set[str]:
     return {
         line.lstrip("#").strip()
-        for line in text.splitlines()
+        for line in _outside_fences(text)
         if line.startswith("#")
     }
 

@@ -263,5 +263,72 @@ class RoleRouterTests(unittest.TestCase):
         )
 
 
+class ReviewRoundTwoRegressionTests(unittest.TestCase):
+    """Regressions for findings raised against head 139b58a."""
+
+    def test_oxford_comma_prefix_lens_list_preserves_every_lens(self):
+        route = infer_role("Do a design, security, and reliability review")
+        self.assertEqual(
+            route.review_lenses, ("design", "security", "reliability")
+        )
+
+    def test_oxford_comma_suffix_lens_list_preserves_every_lens(self):
+        route = infer_role(
+            "Review this PR for design, security, and reliability"
+        )
+        self.assertEqual(
+            route.review_lenses, ("design", "security", "reliability")
+        )
+
+    def test_security_lens_does_not_leak_from_a_later_repair_clause(self):
+        route = infer_role("Audit the implementation, then fix the security bug")
+        self.assertNotIn("security", route.review_lenses)
+        self.assertEqual(
+            route.sequence,
+            ("reviewer", "integrator", "builder", "verifier"),
+        )
+
+    def test_audit_clause_still_selects_its_own_security_lens(self):
+        self.assertEqual(
+            infer_role("Audit the trust boundary").review_lenses, ("security",)
+        )
+
+    def test_mutation_command_after_a_period_is_authorized_repair(self):
+        route = infer_role("Review this PR. Fix what you find.")
+        self.assertEqual(
+            route.sequence,
+            ("reviewer", "integrator", "builder", "verifier"),
+        )
+
+    def test_mutation_command_after_a_newline_is_authorized_repair(self):
+        route = infer_role("Review this PR\nFix what you find")
+        self.assertEqual(
+            route.sequence,
+            ("reviewer", "integrator", "builder", "verifier"),
+        )
+
+    def test_scoped_prohibition_routing_is_clause_order_independent(self):
+        for task in (
+            "Update the docs, but do not edit source files",
+            "Do not edit source files, but update the docs",
+            "Refactor the parser, but do not modify the tests",
+            "Do not modify the tests, but refactor the parser",
+        ):
+            with self.subTest(task=task):
+                self.assertEqual(infer_role(task).inferred, "builder")
+
+    def test_whole_task_prohibition_still_suppresses_builder(self):
+        for task in (
+            "Do not edit anything. Review this PR.",
+            "This task is read-only. Fix nothing.",
+            "Review this PR. No mutations.",
+            "Do not change anything\nReview the parser",
+        ):
+            with self.subTest(task=task):
+                route = infer_role(task)
+                self.assertEqual(route.inferred, "reviewer")
+                self.assertNotIn("builder", route.sequence)
+
+
 if __name__ == "__main__":
     unittest.main()

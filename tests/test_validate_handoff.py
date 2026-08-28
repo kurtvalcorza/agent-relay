@@ -95,6 +95,7 @@ VALID_PASS = """# Agent Pass Record
 
 Agent pass: review-pass
 Role: reviewer
+Review lenses: design
 Role source: inferred
 Role sequence: reviewer -> verifier
 Reviewed/modified snapshot: abc123
@@ -184,6 +185,50 @@ class RecordValidatorTests(unittest.TestCase):
             validate("# Miscellaneous note\n\nNothing structured here."),
             ["could not determine record kind; pass --kind"],
         )
+
+
+FENCED_REVIEW_EXAMPLE = "# Agent Relay Review\n\n" + (
+    "This pass was read-only. The record template is quoted below.\n\n"
+    "```markdown\n"
+    + "".join(
+        f"## {heading}\nexample prose\n\n"
+        for heading in (
+            "Mission",
+            "Reviewer profile",
+            "Reviewed state",
+            "Mutation boundaries",
+            "Evidence baseline",
+            "Findings summary",
+            "Structured findings",
+            "Executed or inspectable evidence",
+            "Unverified surfaces",
+            "Recommended next role/pass",
+            "Readiness/sign-off status",
+            "Provenance",
+        )
+    )
+    + "```\n"
+)
+
+
+class FencedStructureTests(unittest.TestCase):
+    def test_fenced_example_headings_do_not_satisfy_review_structure(self):
+        errors = validate(FENCED_REVIEW_EXAMPLE, kind="review")
+        self.assertTrue(
+            any(error.startswith("missing heading:") for error in errors),
+            f"fenced example wrongly satisfied review structure: {errors}",
+        )
+
+    def test_real_review_with_a_fenced_code_block_still_validates(self):
+        self.assertEqual(validate(VALID_REVIEW), [])
+
+    def test_agent_pass_record_requires_review_lenses(self):
+        without = "\n".join(
+            line
+            for line in VALID_PASS.splitlines()
+            if not line.startswith("Review lenses:")
+        )
+        self.assertIn("missing field: Review lenses:", validate(without, kind="pass"))
 
 
 if __name__ == "__main__":

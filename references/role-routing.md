@@ -33,6 +33,8 @@ Mutation verbs are interpreted from command-like intent, not merely because thei
 
 A scoped prohibition does not cancel an otherwise authorized mutation. `Update the documentation, but do not edit source files` remains Builder work with `source files` preserved as a forbidden surface. `Refactor the parser without changing behavior` remains Builder work with behavior preservation as a constraint. Whole-task prohibitions such as an explicit read-only request or `no mutations` still suppress mutation routing.
 
+Clause order does not change this. `Do not edit source files, but update the docs` routes exactly as `Update the docs, but do not edit source files` does, and the prohibition is preserved either way. Mutation commands are also recognised after a sentence or line boundary, so `Review this PR. Fix what you find.` carries the authorized repair through to `Reviewer -> Integrator -> Builder -> Verifier` rather than silently dropping it.
+
 ### Reviewer
 
 Use Reviewer when the next action is adversarial inspection without immediately assuming a change is needed.
@@ -128,7 +130,7 @@ The reference router automatically supports `standard` and `design` as the prima
 
 Recognized lens intent can itself activate Reviewer routing even when the exact word `review` is absent. Examples include `Assess retry and recovery behavior`, `Identify the test gaps`, and `Check this implementation against the specification`.
 
-Lenses may compose when multiple review intents are explicit. Coordinated forms such as `security and reliability review` or `review this PR for security and reliability` retain both lenses. Use an ordered list representation such as:
+Lenses may compose when multiple review intents are explicit. Coordinated forms such as `security and reliability review` or `review this PR for security and reliability` retain both lenses, including comma-separated and Oxford-comma lists such as `design, security, and reliability review`. Lens selection is scoped to the clause that requests the review: in `Audit the implementation, then fix the security bug`, `security` is the subject of the repair, not the scope of the audit. Use an ordered list representation such as:
 
 ```json
 "review_lenses": ["design", "security"]

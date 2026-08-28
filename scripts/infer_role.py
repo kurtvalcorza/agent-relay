@@ -29,7 +29,14 @@ _LENS_TOKEN = (
     r"(?:standard|design|architecture|architectural|adversarial|security|"
     r"reliability|test[- ]gaps?|spec(?:ification)?[- ]conformance|regression|readiness)"
 )
-_LENS_LIST = rf"{_LENS_TOKEN}(?:\s*(?:,|and|&)\s*{_LENS_TOKEN})*"
+_LENS_SEPARATOR = r"(?:\s*,\s*(?:and\s+|&\s*)?|\s*(?:and|&)\s*)"
+_LENS_LIST = rf"{_LENS_TOKEN}(?:{_LENS_SEPARATOR}{_LENS_TOKEN})*"
+
+
+# Spans text inside a single clause: stops at clause punctuation and at a
+# connective that introduces a separate command, so a later repair clause
+# cannot donate its subject to an earlier inspection phrase.
+_SAME_CLAUSE = r"(?:(?!\b(?:then|but|however|yet)\b)[^.;,\n])*"
 
 
 @dataclass(frozen=True)
@@ -130,7 +137,7 @@ def _infer_review_lenses(text: str) -> tuple[str, ...]:
 
     if _has(
         text,
-        r"\baudit\b.*\b(?:security|trust boundar(?:y|ies))\b",
+        rf"\baudit\b{_SAME_CLAUSE}\b(?:security|trust boundar(?:y|ies))\b",
         r"\baudit\s+trust boundar(?:y|ies)\b",
     ):
         lenses.append("security")
@@ -190,7 +197,8 @@ def _infer_build_intent(text: str) -> bool:
         text,
         rf"^\s*(?:please\s+)?{mutation_verbs}\b",
         rf"[,;:]\s*(?:please\s+)?{mutation_verbs}\b",
-        rf"\b(?:and|then|please|also)\s+{mutation_verbs}\b",
+        rf"(?:[.!?]|\n)\s*(?:please\s+)?{mutation_verbs}\b",
+        rf"\b(?:and|then|please|also|but|however|yet|while)\s+{mutation_verbs}\b",
         rf"\b(?:can|could|would|will)\s+you\s+{mutation_verbs}\b",
         rf"\b(?:want|need)\s+(?:you\s+)?to\s+{mutation_verbs}\b",
         r"\badd (?:a |an |the )?(?:test|tests|feature|file|support)\b",
