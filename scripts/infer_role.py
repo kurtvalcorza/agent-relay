@@ -36,6 +36,11 @@ _LENS_LIST = rf"{_LENS_TOKEN}(?:{_LENS_SEPARATOR}{_LENS_TOKEN})*"
 # Spans text inside a single clause: stops at clause punctuation and at a
 # connective that introduces a separate command, so a later repair clause
 # cannot donate its subject to an earlier inspection phrase.
+#
+# INVARIANT: every lens matcher in _infer_review_lenses that bridges a verb
+# to its subject must use this gap and never a bare `.*`. A bare `.*` lets
+# `Audit the parser, then fix the retry bug` read the repair's subject as
+# the audit's scope. test_no_lens_matcher_uses_an_unbounded_gap enforces it.
 _SAME_CLAUSE = r"(?:(?!\b(?:then|but|however|yet)\b)[^.;,\n])*"
 
 
@@ -144,14 +149,14 @@ def _infer_review_lenses(text: str) -> tuple[str, ...]:
 
     if _has(
         text,
-        r"\b(?:assess|audit)\b.*\b(?:retry|retries|interruption|concurrency|partial failure|recovery)\b",
-        r"\breview\b.*\bproduction failure modes?\b",
+        rf"\b(?:assess|audit)\b{_SAME_CLAUSE}\b(?:retry|retries|interruption|concurrency|partial failure|recovery)\b",
+        rf"\breview\b{_SAME_CLAUSE}\bproduction failure modes?\b",
     ):
         lenses.append("reliability")
 
     if _has(
         text,
-        r"\breview\b.*\btest gaps?\b",
+        rf"\breview\b{_SAME_CLAUSE}\btest gaps?\b",
         r"\bidentify\s+(?:the\s+)?test gaps?\b",
         r"\bwhat (?:is|isn't|is not) tested\b",
     ):
@@ -159,18 +164,18 @@ def _infer_review_lenses(text: str) -> tuple[str, ...]:
 
     if _has(
         text,
-        r"\b(?:review|check)\b.*\bagainst\s+(?:the\s+)?(?:spec|specification|contract|requirements?)\b",
+        rf"\b(?:review|check)\b{_SAME_CLAUSE}\bagainst\s+(?:the\s+)?(?:spec|specification|contract|requirements?)\b",
     ):
         lenses.append("spec-conformance")
 
-    if _has(text, r"\breview\b.*\bfor\s+regressions?\b"):
+    if _has(text, rf"\breview\b{_SAME_CLAUSE}\bfor\s+regressions?\b"):
         lenses.append("regression")
 
     if _has(
         text,
         r"\breadiness\s+review\b",
         r"\b(?:assess|review|audit)\s+(?:merge|release|deployment|production)?\s*readiness\b",
-        r"\breview\b.*\bfor\s+(?:merge|release|deployment|production)\s+readiness\b",
+        rf"\breview\b{_SAME_CLAUSE}\bfor\s+(?:merge|release|deployment|production)\s+readiness\b",
     ):
         lenses.append("readiness")
 

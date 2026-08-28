@@ -130,7 +130,7 @@ The reference router automatically supports `standard` and `design` as the prima
 
 Recognized lens intent can itself activate Reviewer routing even when the exact word `review` is absent. Examples include `Assess retry and recovery behavior`, `Identify the test gaps`, and `Check this implementation against the specification`.
 
-Lenses may compose when multiple review intents are explicit. Coordinated forms such as `security and reliability review` or `review this PR for security and reliability` retain both lenses, including comma-separated and Oxford-comma lists such as `design, security, and reliability review`. Lens selection is scoped to the clause that requests the review: in `Audit the implementation, then fix the security bug`, `security` is the subject of the repair, not the scope of the audit. Use an ordered list representation such as:
+Lenses may compose when multiple review intents are explicit. Coordinated forms such as `security and reliability review` or `review this PR for security and reliability` retain both lenses, including comma-separated and Oxford-comma lists such as `design, security, and reliability review`. Lens selection is scoped to the clause that requests the review, for every lens: in `Audit the implementation, then fix the security bug` and `Audit the implementation, then fix the retry bug`, `security` and `retry` are the subjects of the repair, not the scope of the audit. A second clause that genuinely inspects still contributes its lens, so `Review the parser, then assess merge readiness` keeps `readiness` — the distinction is whether the clause inspects or mutates. Use an ordered list representation such as:
 
 ```json
 "review_lenses": ["design", "security"]

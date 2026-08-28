@@ -1,5 +1,7 @@
+import inspect
 import unittest
 
+from scripts import infer_role as infer_role_module
 from scripts.infer_role import infer_role
 
 
@@ -328,6 +330,77 @@ class ReviewRoundTwoRegressionTests(unittest.TestCase):
                 route = infer_role(task)
                 self.assertEqual(route.inferred, "reviewer")
                 self.assertNotIn("builder", route.sequence)
+
+
+class LensClauseScopeTests(unittest.TestCase):
+    """A lens must describe what is being inspected, not what is being repaired.
+
+    The security lens was fixed for this in the previous round; these cases
+    cover the remaining matchers, which had the identical defect.
+    """
+
+    def test_lens_is_not_read_from_a_mutation_clause(self):
+        for task, lens in (
+            ("Audit the implementation, then fix the retry bug", "reliability"),
+            ("Review the implementation, then fix the test gaps", "test-gap"),
+            ("Assess the parser, then fix the recovery path", "reliability"),
+            (
+                "Review the parser, then fix the production failure modes",
+                "reliability",
+            ),
+            ("Review the parser, then add a test for regressions", "regression"),
+            ("Audit the implementation, then fix the security bug", "security"),
+        ):
+            with self.subTest(task=task):
+                self.assertNotIn(lens, infer_role(task).review_lenses)
+
+    def test_single_clause_requests_keep_their_lens(self):
+        for task, lens in (
+            ("Assess retry and recovery", "reliability"),
+            ("Identify the test gaps", "test-gap"),
+            ("Review this PR for test gaps", "test-gap"),
+            (
+                "Check this implementation against the specification",
+                "spec-conformance",
+            ),
+            ("Review this PR for regressions", "regression"),
+            ("Review this PR for merge readiness", "readiness"),
+            ("Assess merge readiness", "readiness"),
+            ("Review this PR for production failure modes", "reliability"),
+            ("Audit the trust boundary", "security"),
+        ):
+            with self.subTest(task=task):
+                self.assertIn(lens, infer_role(task).review_lenses)
+
+    def test_a_real_second_inspection_clause_still_selects_its_lens(self):
+        """Compound intent is not leakage: clause two here inspects, not mutates."""
+
+        for task, lens in (
+            ("Review the parser, then check it against the spec", "spec-conformance"),
+            ("Review the parser, then assess merge readiness", "readiness"),
+        ):
+            with self.subTest(task=task):
+                self.assertIn(lens, infer_role(task).review_lenses)
+
+    def test_no_lens_matcher_uses_an_unbounded_gap(self):
+        """Structural guard: `.*` between a verb and its lens subject spans clauses.
+
+        Two review rounds found this defect one matcher at a time. This fails at
+        authoring time instead of waiting for a third reviewer to notice.
+        """
+
+        source = inspect.getsource(infer_role_module._infer_review_lenses)
+        offenders = [
+            line.strip()
+            for line in source.splitlines()
+            if ".*" in line and "_SAME_CLAUSE" not in line
+        ]
+        self.assertEqual(
+            offenders,
+            [],
+            "lens matchers must bridge verb and subject with _SAME_CLAUSE, "
+            f"not an unbounded gap: {offenders}",
+        )
 
 
 if __name__ == "__main__":
