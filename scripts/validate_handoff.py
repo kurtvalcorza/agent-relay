@@ -126,8 +126,44 @@ def _headings(text: str) -> set[str]:
     }
 
 
+_BOUNDARY_SECTION = {
+    "handoff": "Mutation permissions",
+    "review": "Mutation boundaries",
+}
+
+
+def _section_body(text: str, heading: str) -> str:
+    """Return the body under `heading`, up to the next same-or-higher heading.
+
+    Sub-headings are kept, because the handoff template nests the boundary
+    statement under `### Strictly read-only / forbidden`.
+    """
+
+    lines = text.splitlines()
+    marks = _outside_fences(text)  # same length; fenced lines blanked
+    start = None
+    level = 0
+    for index, mark in enumerate(marks):
+        if mark.startswith("#") and mark.lstrip("#").strip() == heading:
+            level = len(mark) - len(mark.lstrip("#"))
+            start = index + 1
+            break
+    if start is None:
+        return ""
+
+    body: list[str] = []
+    for index in range(start, len(lines)):
+        mark = marks[index]
+        if mark.startswith("#") and (
+            len(mark) - len(mark.lstrip("#")) <= level
+        ):
+            break
+        body.append(lines[index])
+    return "\n".join(body)
+
+
 def _prefixes_present(text: str, prefixes: tuple[str, ...]) -> int:
-    stripped_lines = [line.strip() for line in text.splitlines()]
+    stripped_lines = [line.strip() for line in _outside_fences(text)]
     return sum(
         1
         for prefix in prefixes
@@ -180,13 +216,18 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
             if heading not in headings:
                 errors.append(f"missing heading: {heading}")
     else:
-        stripped_lines = [line.strip() for line in text.splitlines()]
+        stripped_lines = [line.strip() for line in _outside_fences(text)]
         for prefix in PASS_REQUIRED_PREFIXES:
             if not any(line.startswith(prefix) for line in stripped_lines):
                 errors.append(f"missing field: {prefix}")
 
     if selected_kind in {"handoff", "review"}:
-        lowered = text.lower()
+        # Scoped to the boundary section: unrelated prose elsewhere (an
+        # evidence note mentioning a "forbidden API", say) must not satisfy
+        # the record's one safety field.
+        lowered = _section_body(
+            text, _BOUNDARY_SECTION[selected_kind]
+        ).lower()
         if "read-only" not in lowered and "forbidden" not in lowered:
             errors.append(
                 "mutation boundary is not explicit (no read-only/forbidden statement)"

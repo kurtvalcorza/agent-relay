@@ -1,3 +1,5 @@
+import pathlib
+import re
 import unittest
 
 from scripts.validate_handoff import validate
@@ -229,6 +231,58 @@ class FencedStructureTests(unittest.TestCase):
             if not line.startswith("Review lenses:")
         )
         self.assertIn("missing field: Review lenses:", validate(without, kind="pass"))
+
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+
+
+def _documented_pass_record(filename: str) -> str:
+    """Pull the agent-pass example out of a documentation file."""
+
+    text = (_REPO_ROOT / filename).read_text(encoding="utf-8")
+    match = re.search(r"```text\n(Agent pass:.*?)```", text, re.S)
+    assert match, f"no agent-pass example found in {filename}"
+    return re.sub(r"<[^>\n]+>", "x", match.group(1))
+
+
+class RoundThreeRegressionTests(unittest.TestCase):
+    def test_fenced_pass_record_is_not_a_durable_record(self):
+        """A quoted template must not pass as an actual agent-pass record."""
+
+        body = "\n".join(
+            line for line in VALID_PASS.splitlines() if not line.startswith("# ")
+        )
+        quoted = "# Agent Pass Record\n\nExample only:\n\n```text\n" + body + "\n```\n"
+        self.assertNotEqual(validate(quoted, kind="pass"), [])
+
+    def test_documented_pass_records_satisfy_the_validator(self):
+        """The docs' own examples must be copy-pasteable without errors."""
+
+        for filename in ("SKILL.md", "README.md"):
+            with self.subTest(filename=filename):
+                self.assertEqual(
+                    validate(_documented_pass_record(filename), kind="pass"), []
+                )
+
+    def test_boundary_statement_must_sit_in_the_boundary_section(self):
+        """Unrelated prose elsewhere must not satisfy the one safety field."""
+
+        text = VALID_REVIEW.replace(
+            "- Strictly read-only / forbidden: repository writes",
+            "- No constraints recorded",
+        ).replace("- source inspection", "- forbidden API found in the parser")
+        self.assertIn(
+            "mutation boundary is not explicit (no read-only/forbidden statement)",
+            validate(text),
+        )
+
+    def test_boundary_statement_inside_its_section_still_validates(self):
+        self.assertEqual(validate(VALID_REVIEW), [])
+
+    def test_handoff_boundary_may_sit_under_a_sub_heading(self):
+        """The handoff template nests the prohibition under a `###` heading."""
+
+        self.assertEqual(validate(LEGACY_HANDOFF), [])
 
 
 if __name__ == "__main__":
