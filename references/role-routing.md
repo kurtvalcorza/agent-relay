@@ -1,6 +1,6 @@
 # Automatic Role Routing
 
-Agent Relay may infer the active role and the next role sequence from the current task and durable workflow state. Role inference reduces manual coordination; it does **not** create permissions, weaken mutation boundaries, or authorize an action the user did not authorize.
+Agent Relay may infer the active role, optional Reviewer lenses, and the next role sequence from the current task and durable workflow state. Role/lens inference reduces manual coordination; it does **not** create permissions, weaken mutation boundaries, or authorize an action the user did not authorize.
 
 ## Decision precedence
 
@@ -13,6 +13,8 @@ Apply these inputs in order:
 5. **Task intent** — infer from what must actually happen, not only from keywords.
 6. **Conservative default** — when state is genuinely ambiguous, prefer Reviewer for inspection-only work and Builder for explicitly authorized change work. Ask only when the ambiguity changes permissions, risk, or expected outcome.
 
+Review lens selection is orthogonal to role assignment. An explicit `Reviewer` role may still carry an inferred or explicit lens. An explicit non-Reviewer role must not silently accept a review lens; the reference router treats that combination as invalid rather than discarding the lens.
+
 ## Canonical role signals
 
 ### Builder
@@ -22,9 +24,16 @@ Use Builder when the next required action is to create, implement, repair, refac
 Typical signals:
 - implement this;
 - fix the finding;
+- fix CI;
 - update the spec;
 - revise the document;
 - add tests.
+
+Mutation verbs are interpreted from command-like intent, not merely because their noun form occurs in the task. For example, `review the security fix (read-only)` describes the artifact under review; `fix` there is not authorization to modify it. Conversely, ordinary imperatives such as `Fix a typo`, `Fix CI`, and `fix flaky tests` are Builder requests without requiring an object whitelist.
+
+A scoped prohibition does not cancel an otherwise authorized mutation. `Update the documentation, but do not edit source files` remains Builder work with `source files` preserved as a forbidden surface. `Refactor the parser without changing behavior` remains Builder work with behavior preservation as a constraint. Whole-task prohibitions such as an explicit read-only request or `no mutations` still suppress mutation routing.
+
+Clause order does not change this. `Do not edit source files, but update the docs` routes exactly as `Update the docs, but do not edit source files` does, and the prohibition is preserved either way. Mutation commands are also recognised after a sentence or line boundary, so `Review this PR. Fix what you find.` carries the authorized repair through to `Reviewer -> Integrator -> Builder -> Verifier` rather than silently dropping it.
 
 ### Reviewer
 
@@ -35,7 +44,13 @@ Typical signals:
 - audit this implementation;
 - find bugs;
 - challenge the design;
-- assess whether this is ready.
+- assess merge readiness.
+
+Review/audit verbs follow the same intent discipline as mutation verbs. `Review this PR` is Reviewer work; `Implement the review lens`, `Update the review template`, and `Fix the bug in assets/REVIEW.md` are Builder tasks even though they contain the word `review` as artifact vocabulary.
+
+Reviewer may carry one or more lenses defined in [`review-lenses.md`](review-lenses.md). `standard` is the default. `design` is selected by unambiguous intent such as `adversarial review`, `design review`, or `challenge the assumptions`; every Reviewer pass remains adversarial in posture.
+
+Bare subject nouns must not select lenses. `review the security module` is `Reviewer[standard]`; `security review this PR` is `Reviewer[security]`.
 
 ### Executor
 
@@ -48,7 +63,7 @@ Typical signals:
 - test with a private fixture;
 - inspect a machine-local artifact.
 
-Executor is about **where evidence can be produced**, not who is more trusted.
+Executor is about **where evidence can be produced**, not who is more trusted. A review lens never changes environment routing: if a `Reviewer[security]` pass requires an unavailable scanner/environment, route the execution step to an Executor.
 
 ### Verifier
 
@@ -72,6 +87,8 @@ Typical signals:
 - adjudicate conflicting results;
 - determine what still blocks readiness.
 
+The Integrator owns the final readiness/progress decision. `Reviewer[readiness]` produces an evidence-gap assessment and normally routes to `Verifier -> Integrator`. This remains true when `readiness` is selected explicitly through the reference router rather than inferred from task text.
+
 ## Role sequences
 
 A task may require a sequence rather than a single role. Infer the smallest sequence that preserves independent verification where practical.
@@ -80,15 +97,46 @@ Examples:
 
 | Situation | Recommended route |
 | --- | --- |
-| "Review this PR" | `Reviewer` |
-| "Review and sign off if clean" | `Reviewer -> Verifier` |
-| "Review this PR and fix what you find" | `Reviewer -> Integrator -> Builder -> Verifier` |
-| "Fix Claude's latest finding" | `Integrator -> Builder -> Verifier` |
-| "Run this locally and tell me whether it is ready" | `Executor -> Verifier -> Integrator` |
-| "Continue" with an unresolved valid finding and authorized write access | `Integrator -> Builder -> Verifier` |
+| `Review this PR` | `Reviewer[standard]` |
+| `Adversarially review the design` | `Reviewer[design]` |
+| `Review and sign off if clean` | `Reviewer[standard] -> Verifier` |
+| `Review this PR and fix what you find` | `Reviewer[standard] -> Integrator -> Builder -> Verifier` |
+| `Review test gaps and confirm the tests really run` | `Reviewer[test-gap] -> Verifier` |
+| `Assess merge readiness for this PR` | `Reviewer[readiness] -> Verifier -> Integrator` |
+| `Is this ready to merge?` | `Verifier -> Integrator` |
+| `Fix Claude's latest finding` | `Integrator -> Builder -> Verifier` |
+| `Run this locally and tell me whether it is ready` | `Executor -> Verifier -> Integrator` |
+| `Continue` with an unresolved valid finding and authorized write access | `Integrator -> Builder -> Verifier` |
 | implementation complete but required runtime evidence is missing | `Verifier`, or `Executor -> Verifier` if the environment is unavailable |
 
+When the user explicitly names a review intent and also asks for verification, preserve the Reviewer at the head of the route instead of allowing verification keywords to consume the review request.
+
 Do not add roles mechanically. For a trivial authorized edit, `Builder` alone may be enough. For consequential readiness claims, include independent verification when practical.
+
+## Review lens inference
+
+The valid lenses are:
+
+- `standard`
+- `design`
+- `security`
+- `reliability`
+- `test-gap`
+- `spec-conformance`
+- `regression`
+- `readiness`
+
+The reference router automatically supports `standard` and `design` as the primary v1 inference surface and recognizes the other lenses only from explicit/unambiguous intent phrases. It should remain conservative rather than classify by broad topic nouns.
+
+Recognized lens intent can itself activate Reviewer routing even when the exact word `review` is absent. Examples include `Assess retry and recovery behavior`, `Identify the test gaps`, and `Check this implementation against the specification`.
+
+Lenses may compose when multiple review intents are explicit. Coordinated forms such as `security and reliability review` or `review this PR for security and reliability` retain both lenses, including comma-separated and Oxford-comma lists such as `design, security, and reliability review`. Lens selection is scoped to the clause that requests the review, for every lens: in `Audit the implementation, then fix the security bug` and `Audit the implementation, then fix the retry bug`, `security` and `retry` are the subjects of the repair, not the scope of the audit. A second clause that genuinely inspects still contributes its lens, so `Review the parser, then assess merge readiness` keeps `readiness` — the distinction is whether the clause inspects or mutates. Use an ordered list representation such as:
+
+```json
+"review_lenses": ["design", "security"]
+```
+
+Omit lens metadata for non-Reviewer routes so existing consumers of the reference router's non-review JSON shape remain compatible.
 
 ## Workflow-state inference
 
@@ -116,13 +164,13 @@ Before any of the following claims or actions, automatically enter Verifier beha
 
 This checkpoint does not mean every action requires rerunning the entire test suite. Verification should be proportional and discriminating: inspect the exact fix, run the regression that distinguishes fixed from broken, and confirm relevant surrounding invariants.
 
-## Permissions are not roles
+## Permissions are not roles or lenses
 
-Role routing never grants capabilities.
+Role/lens routing never grants capabilities.
 
-`Builder` does not imply write permission. `Integrator` does not imply permission to merge. `Reviewer` does not imply permission to comment publicly. `Executor` does not imply permission to access credentials or private data.
+`Builder` does not imply write permission. `Integrator` does not imply permission to merge. `Reviewer` does not imply permission to comment publicly. `Executor` does not imply permission to access credentials or private data. A `security`, `design`, or other lens adds no authority.
 
-Before mutating durable state, independently confirm that the requested mutation is authorized.
+Before mutating durable state, independently confirm that the requested mutation is authorized. Scoped prohibitions remain binding even when the active role is Builder; the reference router's role result is not a substitute for carrying the original mutation boundary.
 
 ## Handoff trigger
 
@@ -146,8 +194,10 @@ Agents may maintain a compact role-routing state internally or in durable coordi
 ```yaml
 role:
   inferred: reviewer
+  review_lenses:
+    - design
   confidence: high
-  reason: "Current task asks for adversarial PR review"
+  reason: "Current task asks for design-focused adversarial review"
   sequence:
     - reviewer
     - verifier
@@ -158,4 +208,4 @@ This block is optional. Do not emit it mechanically in normal conversation; expo
 
 ## Fail-closed ambiguity
 
-When role ambiguity affects permissions, destructive actions, release claims, or access to sensitive resources, do not guess. Preserve the safest existing boundary and obtain clarification or additional evidence.
+When role/lens ambiguity affects permissions, destructive actions, release claims, or access to sensitive resources, do not guess. Preserve the safest existing boundary and obtain clarification or additional evidence.

@@ -1,6 +1,6 @@
 # Agent Relay
 
-**Agent Relay** is an agent-agnostic coordination skill for handing work between independent AI agents or agent sessions using automatic role routing, durable state, reproducible evidence, and structured handoffs.
+**Agent Relay** is an agent-agnostic coordination skill for handing work between independent AI agents or agent sessions using automatic role routing, durable state, reproducible evidence, structured handoffs, review lenses, and provenance-aware pass records.
 
 It is designed for workflows where different agents have different strengths or environments—for example, one agent builds, another reviews, another has local GPU/Docker access, and a fourth integrates the result.
 
@@ -16,7 +16,9 @@ Multi-agent workflows often fail for predictable reasons:
 - mutation boundaries are lost between sessions;
 - agents endlessly reply to one another without converging;
 - a green local test is mistaken for release readiness;
-- stale branches, mutable tags, or prose summaries become the source of truth.
+- stale branches, mutable tags, or prose summaries become the source of truth;
+- review findings are not portable across agents;
+- a model/provider name is mistaken for evidence authority.
 
 Agent Relay provides a lightweight protocol for avoiding those failure modes.
 
@@ -32,18 +34,53 @@ Agent Relay provides a lightweight protocol for avoiding those failure modes.
 
 Roles describe responsibilities, not products or identities. The same agent can hold different roles at different stages.
 
+## Review lenses
+
+Starting with **v0.3.0**, Reviewer work can carry explicit review lenses without expanding the five-role model.
+
+Every Reviewer pass remains adversarial in posture. A lens changes the **target of scrutiny**, not the level of skepticism.
+
+| Lens | Core question |
+| --- | --- |
+| `standard` | Is the implementation correct? |
+| `design` | Is the architecture/approach itself sound? |
+| `security` | What trust-boundary, privilege, input, secret, or abuse failures exist? |
+| `reliability` | What happens under retry, interruption, concurrency, partial failure, or recovery? |
+| `test-gap` | What important behavior is not actually exercised? |
+| `spec-conformance` | Does behavior match the authoritative specification/contract? |
+| `regression` | What previously valid behavior may have changed? |
+| `readiness` | What evidence is still missing before a consequential readiness decision? |
+
+The naming is deliberate: **`design`**, not `adversarial`, is the architecture/approach lens because all Reviewer work is already adversarial.
+
+Lens inference is conservative. `Review the security module` is a standard review of security-related code; `Security review this PR` selects `security`.
+
+A readiness review produces an evidence-gap assessment and normally routes:
+
+```text
+Reviewer[readiness] -> Verifier -> Integrator
+```
+
+Final readiness remains an Integrator decision.
+
+See [`references/review-lenses.md`](references/review-lenses.md).
+
 ## Automatic role routing
 
-Starting with **v0.2.0**, Agent Relay can infer the role needed from the task and live workflow state. You should not have to assign a role manually for every turn.
+Starting with **v0.2.0**, Agent Relay can infer the role needed from the task and live workflow state. v0.3.0 adds conservative Reviewer-lens inference.
 
 Examples:
 
 | Situation | Inferred route |
 | --- | --- |
 | `Implement this change` | `Builder` |
-| `Review this PR` | `Reviewer` |
-| `Review and sign off if clean` | `Reviewer -> Verifier` |
+| `Review this PR` | `Reviewer[standard]` |
+| `Adversarially review the design` | `Reviewer[design]` |
+| `Review this PR for test gaps` | `Reviewer[test-gap]` |
+| `Review and sign off if clean` | `Reviewer[standard] -> Verifier` |
 | `Review this and fix what you find` | `Reviewer -> Integrator -> Builder -> Verifier` |
+| `Assess merge readiness for this PR` | `Reviewer[readiness] -> Verifier -> Integrator` |
+| `Is this ready to merge?` | `Verifier -> Integrator` |
 | `Fix the reported finding` | `Integrator -> Builder -> Verifier` when an unresolved finding exists |
 | `Run this under WSL/CUDA locally` | `Executor` or handoff to an Executor |
 | `Confirm that this fix actually works` | `Verifier` |
@@ -59,7 +96,7 @@ Routing precedence is conservative:
 5. task intent;
 6. conservative default.
 
-Role routing **never grants permissions**. Inferring `Builder` does not create write access; inferring `Integrator` does not authorize merge; inferring `Reviewer` does not authorize public comments; inferring `Executor` does not grant credentials or private-data access.
+Role/lens routing **never grants permissions**. Inferring `Builder` does not create write access; inferring `Integrator` does not authorize merge; inferring `Reviewer` does not authorize public comments; inferring `Executor` does not grant credentials or private-data access; selecting `security` does not grant scanner execution.
 
 Before sign-off, approval, declaring a finding fixed, resolving a thread because it is said to be fixed, declaring a gate PASS, recommending merge based on correctness, or declaring release/readiness/stability, Agent Relay automatically requires **Verifier behavior** unless adequate current evidence already exists.
 
@@ -74,9 +111,9 @@ Builder
   ↓
 Durable artifact / repository / document
   ↓
-Reviewer
+Reviewer + optional lens
   ↓
-Findings + evidence
+Structured findings + evidence
   ↓
 Executor or Verifier
   ↓
@@ -93,7 +130,7 @@ The shared substrate can be Git, GitHub, a document store, experiment tracker, d
 
 1. **Durable state beats conversational memory.**
 2. **Evidence beats assertions.**
-3. **Explicit mutation boundaries survive every role change and handoff.**
+3. **Explicit mutation boundaries survive every role/lens change and handoff.**
 4. **Prefer immutable references** such as commit SHAs, content digests, exact artifact IDs, or versioned documents.
 5. **Do not relay private chain-of-thought.** Relay decisions, evidence, findings, commands, constraints, and unresolved questions.
 6. **Do not claim unexecuted verification.** Route it to an Executor instead.
@@ -101,10 +138,11 @@ The shared substrate can be Git, GitHub, a document store, experiment tracker, d
 8. **Fix the owning layer**, then propagate downstream.
 9. **Verify before resolving** a review thread, gate, blocker, or consequential readiness claim.
 10. **Implementation completeness and release readiness are separate states.**
+11. **Attribution is provenance, not authority.** A named model/client does not make a claim stronger evidence.
 
 ## Quick start
 
-Install the skill, point the agent at the durable task state, and work normally. Explicit roles are optional.
+Install the skill, point the agent at the durable task state, and work normally. Explicit roles/lenses are optional.
 
 ```text
 Review this PR and fix anything that is genuinely blocking.
@@ -113,7 +151,19 @@ Review this PR and fix anything that is genuinely blocking.
 Agent Relay should infer something like:
 
 ```text
-Reviewer -> Integrator -> Builder -> Verifier
+Reviewer[standard] -> Integrator -> Builder -> Verifier
+```
+
+For a design-focused pass:
+
+```text
+Adversarially review the design and challenge its assumptions.
+```
+
+Agent Relay should use:
+
+```text
+Reviewer[design]
 ```
 
 If the decisive evidence requires an unavailable environment:
@@ -124,7 +174,31 @@ Run the CUDA path locally and tell me whether the release gate can pass.
 
 Agent Relay should route the unavailable portion to an Executor with a structured packet containing the immutable source revision, required environment, mutation boundaries, exact experiment, acceptance criteria, and evidence to return.
 
-Use [`assets/HANDOFF.md`](assets/HANDOFF.md) for substantive handoffs.
+Use [`assets/HANDOFF.md`](assets/HANDOFF.md) for substantive handoffs and [`assets/REVIEW.md`](assets/REVIEW.md) for substantive review passes.
+
+## Structured review findings
+
+Review findings extend the existing evidence protocol rather than introducing a parallel schema.
+
+A significant review finding should preserve, when applicable:
+
+- ID;
+- lens/lenses;
+- severity and optional confidence;
+- immutable reviewed state;
+- affected location/surface;
+- concrete failure condition;
+- expected behavior;
+- observed behavior;
+- violated requirement/invariant;
+- owning layer;
+- evidence;
+- recommended action;
+- lifecycle state.
+
+Expected versus observed behavior is retained because it makes a finding falsifiable and easier for another agent to verify or disprove.
+
+See [`references/evidence-protocol.md`](references/evidence-protocol.md).
 
 ## Finding lifecycle
 
@@ -136,6 +210,31 @@ Use [`assets/HANDOFF.md`](assets/HANDOFF.md) for substantive handoffs.
 | `BLOCKED` | Required permission, environment, dependency, evidence, or external state is unavailable. |
 
 This prevents endless agent-to-agent review loops.
+
+## Provenance footer
+
+For substantive durable agent-generated records, Agent Relay recommends compact attribution such as:
+
+```text
+Generated by: Claude Code
+Agent Relay role: Reviewer
+Review lenses: design
+Source snapshot: 4271a5a...
+```
+
+or:
+
+```text
+Generated by: OpenAI ChatGPT
+Agent Relay role: Integrator
+Source snapshot: <immutable-id>
+```
+
+`Model:` may be added when the exact model is reliably known.
+
+This is **provenance, not sign-off**. Attribution does not prove who generated the content, authenticate it, approve it, or independently verify it. Agent Relay deliberately reserves sign-off for consequential workflow decisions that require evidence/verification.
+
+See [`PROVENANCE.md`](PROVENANCE.md).
 
 ## Installation
 
@@ -174,31 +273,35 @@ agent-relay/
 ├── AI_USE.md
 │   AI-assisted development disclosure.
 ├── PROVENANCE.md
-│   Public origin and provenance record.
+│   Public origin, agent-attribution convention, and provenance record.
 ├── LICENSE
 │   MIT License.
 ├── references/
 │   ├── roles.md
 │   ├── role-routing.md
+│   ├── review-lenses.md
 │   ├── evidence-protocol.md
 │   ├── local-execution.md
 │   └── repository-coordination.md
 ├── assets/
 │   ├── HANDOFF.md
+│   ├── REVIEW.md
 │   └── AGENT-PASS.md
 ├── scripts/
 │   ├── infer_role.py
 │   └── validate_handoff.py
 └── tests/
-    └── test_infer_role.py
+    ├── __init__.py
+    ├── test_infer_role.py
+    └── test_validate_handoff.py
 ```
 
 ## Reference role router
 
-The router is intentionally small and conservative. It demonstrates the protocol; it is not the normative definition of role routing.
+The router is intentionally small and conservative. It demonstrates the protocol; it is not the normative definition of role/lens routing.
 
 ```bash
-python scripts/infer_role.py "Review this PR and sign off if clean"
+python scripts/infer_role.py "Adversarially review the design and sign off if clean"
 ```
 
 Example output:
@@ -209,14 +312,23 @@ Example output:
   "confidence": "high",
   "reason": "Review request includes consequential sign-off",
   "sequence": ["reviewer", "verifier"],
-  "handoff_required": false
+  "handoff_required": false,
+  "review_lenses": ["design"]
 }
 ```
 
-Run the router tests with:
+Non-Reviewer routes preserve the historical JSON shape by omitting `review_lenses`.
+
+An explicit lens can be supplied to the reference router:
 
 ```bash
-python -m unittest discover -s tests -v
+python scripts/infer_role.py "Review this PR" --review-lens security
+```
+
+Run all tests with:
+
+```bash
+python -m unittest discover -s tests -t . -v
 ```
 
 ## Agent pass records
@@ -224,17 +336,24 @@ python -m unittest discover -s tests -v
 For consequential work, Agent Relay recommends leaving a compact durable record:
 
 ```text
-Agent pass: runtime-adversarial-review
+Agent pass: runtime-design-review
 Role: reviewer
-Reviewed snapshot: 3f4c1a2...
+Review lenses: design
+Role source: inferred
+Role sequence: reviewer -> integrator -> builder
+Reviewed/modified snapshot: 3f4c1a2
 Findings: 4
 Fixed: 0
 Disproved: 1
 Deferred: 0
 Blocked: 0
-Executable evidence: Ubuntu 24.04 / Python 3.12 / 154 passed
+Executable/inspectable evidence: Ubuntu 24.04 / Python 3.12 / 154 passed
+Verification checkpoint: reproduce F-002 on Python 3.10
 Unverified: Python 3.10, CUDA path
 Next recommended role/pass: Builder — repair findings F-002..F-004
+Provenance:
+- Generated by: Claude Code
+- Source snapshot: 3f4c1a2
 ```
 
 The record is an index to evidence, not proof itself.
@@ -252,6 +371,8 @@ This avoids calling something "100% complete" when implementation is finished bu
 
 Agent Relay was developed with substantial AI assistance under human direction and review. Development and review involved AI assistants from multiple providers, including OpenAI ChatGPT and Anthropic Claude, while the maintainer retained responsibility for scope, design decisions, public contents, and release decisions.
 
+The review protocol itself was refined through an independent Claude Code design-review pass before implementation.
+
 See [`AI_USE.md`](AI_USE.md) and [`PROVENANCE.md`](PROVENANCE.md).
 
 The project treats material AI assistance as provenance while avoiding disclosure of private chain-of-thought, credentials, sensitive data, or confidential project context.
@@ -267,17 +388,18 @@ Agent Relay is not:
 - a way to transfer private chain-of-thought;
 - a GitHub-specific workflow;
 - a permission-escalation mechanism;
+- a provider-specific review runtime;
 - a reason to trust one model's conclusions over another's evidence.
 
 It is a **coordination protocol for independent agents operating over shared durable state**.
 
 ## Design goals
 
-Agent Relay aims to remain **agent-agnostic, tool-agnostic, role-based, evidence-first, portable, fail-closed, and human-governed**.
+Agent Relay aims to remain **agent-agnostic, tool-agnostic, role-based, evidence-first, portable, fail-closed, provenance-aware, and human-governed**.
 
 ## Version
 
-Current skill version: **0.2.0**  
+Current skill version: **0.3.0**  
 Protocol identifier: **`agent-relay-v1`**
 
 ## License

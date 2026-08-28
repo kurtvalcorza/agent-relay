@@ -25,13 +25,29 @@ Builder anti-patterns:
 
 Use for adversarial inspection of an existing artifact.
 
+Every Reviewer pass is adversarial in posture. Review lenses refine the target of inspection; they do not create new roles and do not make baseline review less skeptical.
+
 Responsibilities:
 - read the exact reviewed revision;
+- select the appropriate review lens or lenses when useful;
 - reproduce failures where practical;
 - identify concrete failure cases;
 - distinguish correctness defects from quality/style preferences;
 - bind findings to requirements or acceptance criteria;
+- preserve expected versus observed behavior so findings remain falsifiable;
 - keep unresolved uncertainty visible.
+
+Common lenses:
+- `standard` — implementation correctness;
+- `design` — architecture, assumptions, and approach;
+- `security` — trust boundaries and misuse paths;
+- `reliability` — retries, interruption, concurrency, partial failure, and recovery;
+- `test-gap` — missing or non-discriminating evidence;
+- `spec-conformance` — behavior against an authoritative requirement/contract;
+- `regression` — previously valid behavior that may have changed;
+- `readiness` — evidence-gap assessment before consequential readiness decisions.
+
+See [`review-lenses.md`](review-lenses.md).
 
 High-value reviewer prompts:
 - What can silently succeed without proving the claim?
@@ -41,6 +57,13 @@ High-value reviewer prompts:
 - Can partial evidence satisfy a readiness state?
 - Does an external dependency change the semantics without changing identity?
 - Is one environment accidentally defining the contract?
+- Is the implementation approach itself the correct one?
+
+Reviewer anti-patterns:
+- treating a named model/provider as evidence authority;
+- inferring a security/reliability/etc. lens from a bare subject noun rather than review intent;
+- running unavailable environment-specific tooling instead of routing it to an Executor;
+- making the final readiness decision merely because a readiness lens was selected.
 
 ## Executor
 
@@ -87,6 +110,8 @@ Responsibilities:
 - update readiness/progress state;
 - keep external blockers separate from repo-side defects;
 - ensure durable documentation reflects the actual current state.
+
+The Integrator owns consequential readiness/progress decisions after the necessary Reviewer/Verifier evidence is established. A `readiness` review lens produces an evidence-gap assessment; it does not transfer this authority to the Reviewer.
 
 ## Role switching
 
