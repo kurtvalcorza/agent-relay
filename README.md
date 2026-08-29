@@ -63,6 +63,8 @@ Reviewer[readiness] -> Verifier -> Integrator
 
 Final readiness remains an Integrator decision.
 
+A completed review belongs in durable state, not only in conversation, so a request to review a named artifact carries authority to record the review on that artifact. See **Review recording authority** in [`SKILL.md`](SKILL.md).
+
 See [`references/review-lenses.md`](references/review-lenses.md).
 
 ## Automatic role routing
@@ -96,7 +98,9 @@ Routing precedence is conservative:
 5. task intent;
 6. conservative default.
 
-Role/lens routing **never grants permissions**. Inferring `Builder` does not create write access; inferring `Integrator` does not authorize merge; inferring `Reviewer` does not authorize public comments; inferring `Executor` does not grant credentials or private-data access; selecting `security` does not grant scanner execution.
+Role/lens routing **never grants permissions**. Inferring `Builder` does not create write access; inferring `Integrator` does not authorize merge; inferring `Reviewer` does not authorize changing the reviewed artifact; inferring `Executor` does not grant credentials or private-data access; selecting `security` does not grant scanner execution.
+
+The one exception is granted by the request, not the role: asking for a review of a **named** artifact carries authority to record that review on that artifact's own review channel — a PR or issue comment, a review thread, a document comment. It carries nothing else, and an explicit read-only boundary still overrides it.
 
 Before sign-off, approval, declaring a finding fixed, resolving a thread because it is said to be fixed, declaring a gate PASS, recommending merge based on correctness, or declaring release/readiness/stability, Agent Relay automatically requires **Verifier behavior** unless adequate current evidence already exists.
 
@@ -399,7 +403,7 @@ Agent Relay aims to remain **agent-agnostic, tool-agnostic, role-based, evidence
 
 ## Version
 
-Current skill version: **0.3.0**  
+Current skill version: **0.3.1**  
 Protocol identifier: **`agent-relay-v1`**
 
 ## License

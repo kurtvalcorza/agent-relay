@@ -168,7 +168,9 @@ This checkpoint does not mean every action requires rerunning the entire test su
 
 Role/lens routing never grants capabilities.
 
-`Builder` does not imply write permission. `Integrator` does not imply permission to merge. `Reviewer` does not imply permission to comment publicly. `Executor` does not imply permission to access credentials or private data. A `security`, `design`, or other lens adds no authority.
+`Builder` does not imply write permission. `Integrator` does not imply permission to merge. `Reviewer` does not imply permission to modify the reviewed artifact. `Executor` does not imply permission to access credentials or private data. A `security`, `design`, or other lens adds no authority.
+
+One narrow authority comes from the request rather than the role: a request to review a named durable artifact carries authority to record that review on that artifact's own review channel. Inferring `Reviewer` from ambiguous text grants nothing; naming the artifact in the request is what grants it. The authority covers recording the review and nothing else — not modifying the reviewed content, approving, merging, resolving, or recording elsewhere — and an explicit read-only boundary still overrides it under precedence rule 2. See the review recording authority rule in [`../SKILL.md`](../SKILL.md).
 
 Before mutating durable state, independently confirm that the requested mutation is authorized. Scoped prohibitions remain binding even when the active role is Builder; the reference router's role result is not a substitute for carrying the original mutation boundary.
 

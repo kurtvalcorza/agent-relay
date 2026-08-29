@@ -31,6 +31,8 @@ For a repository/PR review, record where available:
 
 Prefer commit SHAs in durable findings and pass records. Branch names and mutable tags may locate work, but they are not sufficient identity for consequential evidence.
 
+On this substrate, the review channel of a named PR or issue is its review threads and comments. A request to review a named PR, issue, or revision therefore carries authority to record that review there. It does not carry authority to push, merge, approve, request changes as a blocking gate, resolve threads, reopen or close the item, or comment on any other artifact.
+
 ### Lens application
 
 - `standard`: inspect implementation correctness within the changed scope and relevant surrounding invariants.
@@ -109,7 +111,7 @@ For substantive generated review comments, a compact provenance footer may recor
 
 Credentials granting write access do not override a user-declared read-only boundary.
 
-If a source repository is read-only:
+A user-declared read-only boundary outranks review recording authority. If a source repository is read-only:
 - inspect at immutable revision;
 - record evidence elsewhere;
 - do not comment, create issues, or open PRs there;
