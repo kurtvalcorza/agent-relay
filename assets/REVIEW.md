@@ -17,6 +17,7 @@
 ## Mutation boundaries
 - Allowed: <authorized mutations, or none>
 - Strictly read-only / forbidden: <resources and exact prohibition>
+- Review recorded at: <artifact and review channel, or not yet recorded>
 
 ## Evidence baseline
 - <existing tests, checks, source evidence, environment, or N/A>

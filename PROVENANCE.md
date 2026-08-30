@@ -60,6 +60,12 @@ An independent Claude Code design-review pass identified important corrections b
 
 These findings materially shaped the implemented protocol.
 
+## Review recording authority
+
+Agent Relay v0.3.1 resolved an ambiguity surfaced while reviewing an RFC with the protocol itself: the specification said where review findings belong but never said whether a Reviewer was permitted to put them there, so a review could stall in conversation while rule 1 declared durable state the source of truth.
+
+The maintainer decided that a request to review a named durable artifact carries authority to record that review on that artifact's own review channel. The authority is deliberately narrow — it comes from the request naming the artifact rather than from the inferred role, it covers recording alone, and an explicit read-only boundary still overrides it.
+
 ## Agent attribution convention
 
 Agent Relay supports compact provenance footers for substantive durable agent-generated records.

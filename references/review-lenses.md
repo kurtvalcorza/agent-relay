@@ -105,7 +105,8 @@ Bare nouns such as `security`, `reliability`, `test`, `spec`, or `regression` sh
 A lens never:
 - creates mutation permission;
 - grants credentials or private-data access;
-- authorizes public comments, merges, releases, or approvals;
+- authorizes merges, releases, or approvals;
+- widens where a review may be recorded beyond what the review request already authorizes;
 - changes environment-feasibility routing;
 - makes the Reviewer the Executor or Verifier.
 

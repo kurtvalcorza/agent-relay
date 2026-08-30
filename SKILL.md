@@ -2,7 +2,7 @@
 name: agent-relay
 description: Coordinate work across independent AI agents or agent sessions using automatic role routing, durable state, reproducible evidence, structured handoffs, review lenses, and provenance-aware pass records. Use when building, reviewing, executing, verifying, integrating, resuming another agent's work, reconciling findings, handing work to an agent with different local tools or environments, or using repositories, issues, PRs, documents, experiments, or other shared artifacts as the coordination substrate.
 metadata:
-  version: "0.3.0"
+  version: "0.3.1"
   protocol: "agent-relay-v1"
   standard: "Agent Skills"
 ---
@@ -46,7 +46,7 @@ Infer lenses from review intent, not bare subject nouns. `Review the security mo
 
 Lenses may compose when the user explicitly requests more than one, for example `Reviewer[design, security]`. Do not mechanically add `standard` when a more specific lens is already selected.
 
-A lens never grants mutation permission, credentials, public-comment authority, execution capability, merge authority, or sign-off authority. If a review needs an unavailable scanner, runtime, GPU, private fixture, or other environment-specific execution, route that evidence step to an Executor.
+A lens never grants mutation permission, credentials, execution capability, merge authority, sign-off authority, or any recording authority the review request does not already carry. If a review needs an unavailable scanner, runtime, GPU, private fixture, or other environment-specific execution, route that evidence step to an Executor.
 
 `Reviewer[readiness]` produces an evidence-gap assessment. Final consequential readiness remains an Integrator decision after the required verification.
 
@@ -83,7 +83,7 @@ Typical routes:
 
 Before approving, signing off, declaring a finding fixed, resolving a thread because it is said to be fixed, declaring a gate PASS, recommending merge on correctness grounds, or declaring release/readiness/stability, automatically enter Verifier behavior unless adequate current evidence already exists.
 
-Role/lens inference never grants permissions. `Builder` does not imply write access. `Integrator` does not imply merge authority. `Reviewer` does not imply permission to post public comments. `Executor` does not imply access to credentials or private data.
+Role/lens inference never grants permissions. `Builder` does not imply write access. `Integrator` does not imply merge authority. `Reviewer` does not imply permission to modify the reviewed artifact. `Executor` does not imply access to credentials or private data. The one narrow authority a review request does carry is defined in **Review recording authority** below; it comes from the request naming an artifact, not from the inferred role.
 
 Read [references/role-routing.md](references/role-routing.md) for the full routing rules. `scripts/infer_role.py` is a non-normative reference implementation.
 
@@ -147,6 +147,23 @@ A Builder must not describe unexecuted tests as passing.
 10. Route unavailable environment-specific experiments to Executor rather than pretending the Reviewer ran them.
 
 For substantive durable review passes, use [assets/REVIEW.md](assets/REVIEW.md) when useful.
+
+### Review recording authority
+
+A request to review a named durable artifact carries authority to record that review on that artifact, through the artifact's own review channel. Recording means adding a review record: an issue or pull-request comment, a review thread, a document comment or appended review section, an experiment-log entry, or the substrate's equivalent.
+
+This is deliberate. Rule 1 makes durable state the source of truth, so a review that exists only in conversation is not yet a relay artifact. The authority comes from the request naming the artifact, not from holding the Reviewer role.
+
+Recording authority is narrow. It does not authorize:
+
+- modifying the reviewed content itself;
+- approving, signing off, merging, releasing, closing, or resolving threads;
+- recording on any artifact the request did not name;
+- publishing, notifying, or escalating beyond the artifact's own review channel.
+
+It is also subordinate to every stated boundary. An explicit read-only declaration over the artifact or its substrate still forbids recording there, because rule 3 outranks this rule. If the substrate offers no non-destructive review channel — so recording would mean mutating the reviewed artifact — return the review to the requester and ask where it should land.
+
+Ask first when the review target was inferred rather than named, or when recording would reach a materially wider audience than the request implied.
 
 ## Executor workflow
 
@@ -339,6 +356,7 @@ Before ending a relay pass, verify:
 - Did every finding receive a concrete state?
 - Did fixes land in the correct ownership layer?
 - Did I avoid claiming readiness from partial evidence?
+- If I recorded a review, did the request name that artifact, and did I stay inside its review channel?
 - If I added agent attribution, did I avoid treating it as verification or sign-off?
 - Can the next agent resume without reconstructing hidden context?
 - Did I update the durable substrate when authorized?
