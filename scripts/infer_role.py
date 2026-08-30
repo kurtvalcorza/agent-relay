@@ -127,9 +127,11 @@ def _infer_review_lenses(text: str) -> tuple[str, ...]:
     ):
         lenses.extend(_lenses_from_fragment(match.group("lenses")))
 
-    # Verb-led audit commands: "Run a security audit", "Conduct a reliability audit".
+    # Verb-led commands: "Run a security review", "Conduct a reliability audit".
+    # The command boundary preserves clause isolation while supporting the
+    # established review and audit forms.
     for match in re.finditer(
-        rf"{_COMMAND_BOUNDARY}(?:please\s+)?(?:run|conduct|perform|do)\s+(?:an?\s+)?(?P<lenses>{_LENS_LIST})\s+audit\b",
+        rf"{_COMMAND_BOUNDARY}(?:please\s+)?(?:run|conduct|perform|do)\s+(?:an?\s+)?(?P<lenses>{_LENS_LIST})\s+(?:review|audit)\b",
         text,
         flags=re.IGNORECASE,
     ):
