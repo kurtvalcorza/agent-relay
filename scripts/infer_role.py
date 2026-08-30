@@ -35,6 +35,11 @@ _LENS_LIST = rf"{_LENS_TOKEN}(?:{_LENS_SEPARATOR}{_LENS_TOKEN})*"
 # A command boundary used where a phrase must start a new instruction rather
 # than merely occur as the noun/object of another command.
 _COMMAND_BOUNDARY = r"(?:^|(?:[.!?]|\n)\s*|[,;:]\s*|\b(?:and|then|please|also)\s+)"
+# Direct lens prefixes must not begin at comma/`and`, because those tokens are
+# also separators inside a compound lens list. Otherwise `security and
+# reliability review` is re-matched first as `reliability review` and loses
+# the user's declared order.
+_DIRECT_LENS_BOUNDARY = r"(?:^|(?:[.!?]|\n)\s*|[;:]\s*|\b(?:then|please|also)\s+)"
 
 # Spans text inside a single clause: stops at clause punctuation and at a
 # connective that introduces a separate command, so a later repair clause
@@ -119,9 +124,10 @@ def _infer_review_lenses(text: str) -> tuple[str, ...]:
 
     # Direct command forms only. This prevents a later mutation object such as
     # "implement a security audit feature" from donating its noun phrase to an
-    # earlier review clause.
+    # earlier review clause. The narrower boundary avoids starting in the middle
+    # of a compound lens list.
     for match in re.finditer(
-        rf"{_COMMAND_BOUNDARY}(?:please\s+)?(?P<lenses>{_LENS_LIST})\s+(?:review|audit)\b",
+        rf"{_DIRECT_LENS_BOUNDARY}(?:please\s+)?(?P<lenses>{_LENS_LIST})\s+(?:review|audit)\b",
         text,
         flags=re.IGNORECASE,
     ):
