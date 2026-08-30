@@ -115,9 +115,9 @@ def _infer_review_lenses(text: str) -> tuple[str, ...]:
     lenses: list[str] = []
 
     # Prefix forms, including compound requests:
-    # "security review", "security and reliability review".
+    # "security review", "security and reliability audit".
     for match in re.finditer(
-        rf"\b(?P<lenses>{_LENS_LIST})\s+review\b",
+        rf"\b(?P<lenses>{_LENS_LIST})\s+(?:review|audit)\b",
         text,
         flags=re.IGNORECASE,
     ):
@@ -198,6 +198,7 @@ def _infer_build_intent(text: str) -> bool:
     """Infer mutation intent from command-like phrasing, not artifact nouns."""
 
     mutation_verbs = r"(?:implement|fix|repair|build|update|revise|refactor)"
+    test_authoring = r"(?:write|create)\s+(?:an?\s+|the\s+)?(?:(?:adversarial|regression)\s+)?(?:test|tests|test suite)\b"
     if _has(
         text,
         rf"^\s*(?:please\s+)?{mutation_verbs}\b",
@@ -207,6 +208,9 @@ def _infer_build_intent(text: str) -> bool:
         rf"\b(?:can|could|would|will)\s+you\s+{mutation_verbs}\b",
         rf"\b(?:want|need)\s+(?:you\s+)?to\s+{mutation_verbs}\b",
         r"\badd (?:a |an |the )?(?:test|tests|feature|file|support)\b",
+        rf"^\s*(?:please\s+)?{test_authoring}",
+        rf"(?:[.!?]|\n)\s*(?:please\s+)?{test_authoring}",
+        rf"\b(?:and|then|please|also|but|however|yet|while)\s+{test_authoring}",
     ):
         return True
 
@@ -219,11 +223,12 @@ def _infer_review_operation(text: str) -> bool:
     if _has(
         text,
         r"^\s*(?:please\s+)?(?:review|audit)\b",
+        r"(?:[.!?]|\n)\s*(?:please\s+)?(?:review|audit)\b",
         r"\b(?:and|then|please|also)\s+(?:review|audit)\b",
         r"\b(?:can|could|would|will)\s+you\s+(?:review|audit)\b",
         r"\b(?:want|need)\s+(?:you\s+)?to\s+(?:review|audit)\b",
         r"\b(?:do|run|perform|conduct)\s+(?:an?\s+)?(?:[\w-]+\s+(?:and\s+[\w-]+\s+)*)?(?:review|audit)\b",
-        rf"^\s*(?:please\s+)?{_LENS_LIST}\s+review\b",
+        rf"^\s*(?:please\s+)?{_LENS_LIST}\s+(?:review|audit)\b",
         r"\b(?:review|audit)\s+(?:this|that|it|these|those|the|a|an|my|our)\b",
         r"\bhunt bugs?\b",
         r"\bchallenge\s+(?:the\s+)?(?:design|architecture|approach|assumptions?)\b",
@@ -238,14 +243,17 @@ def _infer_review_operation(text: str) -> bool:
 
 
 def _global_mutation_prohibition(text: str) -> bool:
-    """Detect whole-task mutation prohibitions without swallowing scoped boundaries."""
+    """Detect whole-task mutation prohibitions without swallowing feature nouns."""
 
     return _has(
         text,
-        r"^\s*read[- ]only\b",
+        r"^\s*(?:please\s+)?read[- ]only(?:\s+(?:mode|request|review))?\b",
         r"\b(?:this|the)\s+(?:task|repo|repository|artifact|work)\s+is\s+read[- ]only\b",
-        r"\bread[- ]only\s+(?:mode|request|review)\b",
-        r"\bno mutations?\b",
+        r"\b(?:work|operate|proceed|stay)\s+(?:in\s+)?read[- ]only(?:\s+mode)?\b",
+        r"\b(?:make|keep)\s+(?:this|the)\s+(?:task|repo|repository|artifact|work)\s+read[- ]only\b",
+        r"^\s*(?:please\s+)?no mutations?\b",
+        r"(?:[.!?]|\n)\s*(?:please\s+)?no mutations?\b",
+        r"\b(?:make|do)\s+no mutations?\b",
         r"\bdo not (?:edit|modify|change|write|fix|repair)(?:\s+(?:anything|this|it|the (?:repo|repository|codebase)))?\s*(?:[.!?]|$)",
         r"\bwithout (?:editing|modifying|changing|writing)(?:\s+(?:anything|this|it))?\s*(?:[.!?]|$)",
     )
