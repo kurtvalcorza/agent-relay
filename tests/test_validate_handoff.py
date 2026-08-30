@@ -242,7 +242,16 @@ def _documented_pass_record(filename: str) -> str:
     text = (_REPO_ROOT / filename).read_text(encoding="utf-8")
     match = re.search(r"```text\n(Agent pass:.*?)```", text, re.S)
     assert match, f"no agent-pass example found in {filename}"
-    return re.sub(r"<[^>\n]+>", "x", match.group(1))
+    record = re.sub(r"<[^>\n]+>", "x", match.group(1))
+    # v0.4 examples intentionally show enum placeholders. Normalize only the
+    # synthetic copy used by this copy-paste structure test; the actual template
+    # still fails validation until a user fills all angle-bracket placeholders.
+    record = record.replace("Mission mode: x", "Mission mode: N/A")
+    record = record.replace("Assurance profile: x", "Assurance profile: N/A")
+    record = record.replace("Execution status: x", "Execution status: N/A")
+    record = record.replace("Termination reason: x", "Termination reason: N/A")
+    record = record.replace("Mutation boundary: x", "Mutation boundary: allowed: x")
+    return record
 
 
 class RoundThreeRegressionTests(unittest.TestCase):
