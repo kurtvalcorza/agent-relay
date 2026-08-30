@@ -39,6 +39,8 @@ class DeferredRouterGapTests(unittest.TestCase):
             "Implement the patch. No mutations.",
             "Implement the patch, but do not modify anything.",
             "Please work in read-only mode and inspect the parser.",
+            "Review the parser in read-only mode and fix what you find",
+            "Review the parser, no mutations, then fix it",
         ):
             with self.subTest(task=task):
                 route = infer_role(task)
