@@ -32,6 +32,14 @@ _LENS_TOKEN = (
 _LENS_SEPARATOR = r"(?:\s*,\s*(?:and\s+|&\s*)?|\s*(?:and|&)\s*)"
 _LENS_LIST = rf"{_LENS_TOKEN}(?:{_LENS_SEPARATOR}{_LENS_TOKEN})*"
 
+# A command boundary used where a phrase must start a new instruction rather
+# than merely occur as the noun/object of another command.
+_COMMAND_BOUNDARY = r"(?:^|(?:[.!?]|\n)\s*|[,;:]\s*|\b(?:and|then|please|also)\s+)"
+# Direct lens prefixes must not begin at comma/`and`, because those tokens are
+# also separators inside a compound lens list. Otherwise `security and
+# reliability review` is re-matched first as `reliability review` and loses
+# the user's declared order.
+_DIRECT_LENS_BOUNDARY = r"(?:^|(?:[.!?]|\n)\s*|[;:]\s*|\b(?:then|please|also)\s+)"
 
 # Spans text inside a single clause: stops at clause punctuation and at a
 # connective that introduces a separate command, so a later repair clause
@@ -114,10 +122,22 @@ def _infer_review_lenses(text: str) -> tuple[str, ...]:
 
     lenses: list[str] = []
 
-    # Prefix forms, including compound requests:
-    # "security review", "security and reliability review".
+    # Direct command forms only. This prevents a later mutation object such as
+    # "implement a security audit feature" from donating its noun phrase to an
+    # earlier review clause. The narrower boundary avoids starting in the middle
+    # of a compound lens list.
     for match in re.finditer(
-        rf"\b(?P<lenses>{_LENS_LIST})\s+review\b",
+        rf"{_DIRECT_LENS_BOUNDARY}(?:please\s+)?(?P<lenses>{_LENS_LIST})\s+(?:review|audit)\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        lenses.extend(_lenses_from_fragment(match.group("lenses")))
+
+    # Verb-led commands: "Run a security review", "Conduct a reliability audit".
+    # The command boundary preserves clause isolation while supporting the
+    # established review and audit forms.
+    for match in re.finditer(
+        rf"{_COMMAND_BOUNDARY}(?:please\s+)?(?:run|conduct|perform|do)\s+(?:an?\s+)?(?P<lenses>{_LENS_LIST})\s+(?:review|audit)\b",
         text,
         flags=re.IGNORECASE,
     ):
@@ -198,6 +218,12 @@ def _infer_build_intent(text: str) -> bool:
     """Infer mutation intent from command-like phrasing, not artifact nouns."""
 
     mutation_verbs = r"(?:implement|fix|repair|build|update|revise|refactor)"
+    # Explicit authoring of something whose terminal noun is test/tests is a
+    # mutation regardless of the qualifier; do not maintain a test-type whitelist.
+    test_authoring = (
+        r"(?:write|create)\s+(?:an?\s+|the\s+)?(?:new\s+)?"
+        r"(?:[\w-]+\s+){0,3}(?:test|tests|test\s+suite|test\s+cases?)\b"
+    )
     if _has(
         text,
         rf"^\s*(?:please\s+)?{mutation_verbs}\b",
@@ -207,6 +233,9 @@ def _infer_build_intent(text: str) -> bool:
         rf"\b(?:can|could|would|will)\s+you\s+{mutation_verbs}\b",
         rf"\b(?:want|need)\s+(?:you\s+)?to\s+{mutation_verbs}\b",
         r"\badd (?:a |an |the )?(?:test|tests|feature|file|support)\b",
+        rf"^\s*(?:please\s+)?{test_authoring}",
+        rf"(?:[.!?]|\n)\s*(?:please\s+)?{test_authoring}",
+        rf"\b(?:and|then|please|also|but|however|yet|while)\s+{test_authoring}",
     ):
         return True
 
@@ -216,14 +245,24 @@ def _infer_build_intent(text: str) -> bool:
 def _infer_review_operation(text: str) -> bool:
     """Infer an inspection operation from command-like phrasing, not artifact nouns."""
 
+    # After a sentence boundary, reject declarative subjects such as
+    # "Audit logs must ..." or "Review comments should ...". This keeps the
+    # N-1 command form ("Review for regressions") without treating requirement
+    # nouns as imperative review operations.
+    sentence_review = (
+        r"(?:[.!?]|\n)\s*(?:please\s+)?(?:review|audit)\b"
+        r"(?!\s+(?:[\w-]+\s+){0,2}(?:must|should|shall|needs?|is|are|will)\b)"
+    )
+
     if _has(
         text,
         r"^\s*(?:please\s+)?(?:review|audit)\b",
+        sentence_review,
         r"\b(?:and|then|please|also)\s+(?:review|audit)\b",
         r"\b(?:can|could|would|will)\s+you\s+(?:review|audit)\b",
         r"\b(?:want|need)\s+(?:you\s+)?to\s+(?:review|audit)\b",
         r"\b(?:do|run|perform|conduct)\s+(?:an?\s+)?(?:[\w-]+\s+(?:and\s+[\w-]+\s+)*)?(?:review|audit)\b",
-        rf"^\s*(?:please\s+)?{_LENS_LIST}\s+review\b",
+        rf"^\s*(?:please\s+)?{_LENS_LIST}\s+(?:review|audit)\b",
         r"\b(?:review|audit)\s+(?:this|that|it|these|those|the|a|an|my|our)\b",
         r"\bhunt bugs?\b",
         r"\bchallenge\s+(?:the\s+)?(?:design|architecture|approach|assumptions?)\b",
@@ -238,14 +277,21 @@ def _infer_review_operation(text: str) -> bool:
 
 
 def _global_mutation_prohibition(text: str) -> bool:
-    """Detect whole-task mutation prohibitions without swallowing scoped boundaries."""
+    """Detect whole-task mutation prohibitions without swallowing feature nouns."""
 
     return _has(
         text,
-        r"^\s*read[- ]only\b",
+        r"^\s*(?:please\s+)?read[- ]only(?:\s+(?:mode|request|review))?\b",
         r"\b(?:this|the)\s+(?:task|repo|repository|artifact|work)\s+is\s+read[- ]only\b",
-        r"\bread[- ]only\s+(?:mode|request|review)\b",
-        r"\bno mutations?\b",
+        r"\b(?:work|operate|proceed|stay)\s+(?:in\s+)?read[- ]only(?:\s+mode)?\b",
+        r"\b(?:make|keep)\s+(?:this|the)\s+(?:task|repo|repository|artifact|work)\s+read[- ]only\b",
+        # Inline inspection directives are task boundaries, unlike feature nouns
+        # such as "Implement read-only mode".
+        r"\b(?:review|audit|inspect|check|analyze)\b[^.;\n]{0,120}\bin\s+read[- ]only(?:\s+mode)?\b",
+        r"^\s*(?:please\s+)?no mutations?\b",
+        r"(?:[.!?]|\n)\s*(?:please\s+)?no mutations?\b",
+        r"(?:[,;:]\s*|\b(?:and|but|then|however|yet)\s+)(?:please\s+)?no mutations?\b",
+        r"\b(?:make|do)\s+no mutations?\b",
         r"\bdo not (?:edit|modify|change|write|fix|repair)(?:\s+(?:anything|this|it|the (?:repo|repository|codebase)))?\s*(?:[.!?]|$)",
         r"\bwithout (?:editing|modifying|changing|writing)(?:\s+(?:anything|this|it))?\s*(?:[.!?]|$)",
     )
