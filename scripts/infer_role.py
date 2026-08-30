@@ -32,6 +32,9 @@ _LENS_TOKEN = (
 _LENS_SEPARATOR = r"(?:\s*,\s*(?:and\s+|&\s*)?|\s*(?:and|&)\s*)"
 _LENS_LIST = rf"{_LENS_TOKEN}(?:{_LENS_SEPARATOR}{_LENS_TOKEN})*"
 
+# A command boundary used where a phrase must start a new instruction rather
+# than merely occur as the noun/object of another command.
+_COMMAND_BOUNDARY = r"(?:^|(?:[.!?]|\n)\s*|[,;:]\s*|\b(?:and|then|please|also)\s+)"
 
 # Spans text inside a single clause: stops at clause punctuation and at a
 # connective that introduces a separate command, so a later repair clause
@@ -114,10 +117,19 @@ def _infer_review_lenses(text: str) -> tuple[str, ...]:
 
     lenses: list[str] = []
 
-    # Prefix forms, including compound requests:
-    # "security review", "security and reliability audit".
+    # Direct command forms only. This prevents a later mutation object such as
+    # "implement a security audit feature" from donating its noun phrase to an
+    # earlier review clause.
     for match in re.finditer(
-        rf"\b(?P<lenses>{_LENS_LIST})\s+(?:review|audit)\b",
+        rf"{_COMMAND_BOUNDARY}(?:please\s+)?(?P<lenses>{_LENS_LIST})\s+(?:review|audit)\b",
+        text,
+        flags=re.IGNORECASE,
+    ):
+        lenses.extend(_lenses_from_fragment(match.group("lenses")))
+
+    # Verb-led audit commands: "Run a security audit", "Conduct a reliability audit".
+    for match in re.finditer(
+        rf"{_COMMAND_BOUNDARY}(?:please\s+)?(?:run|conduct|perform|do)\s+(?:an?\s+)?(?P<lenses>{_LENS_LIST})\s+audit\b",
         text,
         flags=re.IGNORECASE,
     ):
@@ -198,7 +210,12 @@ def _infer_build_intent(text: str) -> bool:
     """Infer mutation intent from command-like phrasing, not artifact nouns."""
 
     mutation_verbs = r"(?:implement|fix|repair|build|update|revise|refactor)"
-    test_authoring = r"(?:write|create)\s+(?:an?\s+|the\s+)?(?:(?:adversarial|regression)\s+)?(?:test|tests|test suite)\b"
+    # Explicit authoring of something whose terminal noun is test/tests is a
+    # mutation regardless of the qualifier; do not maintain a test-type whitelist.
+    test_authoring = (
+        r"(?:write|create)\s+(?:an?\s+|the\s+)?(?:new\s+)?"
+        r"(?:[\w-]+\s+){0,3}(?:test|tests|test\s+suite|test\s+cases?)\b"
+    )
     if _has(
         text,
         rf"^\s*(?:please\s+)?{mutation_verbs}\b",
@@ -220,10 +237,19 @@ def _infer_build_intent(text: str) -> bool:
 def _infer_review_operation(text: str) -> bool:
     """Infer an inspection operation from command-like phrasing, not artifact nouns."""
 
+    # After a sentence boundary, reject declarative subjects such as
+    # "Audit logs must ..." or "Review comments should ...". This keeps the
+    # N-1 command form ("Review for regressions") without treating requirement
+    # nouns as imperative review operations.
+    sentence_review = (
+        r"(?:[.!?]|\n)\s*(?:please\s+)?(?:review|audit)\b"
+        r"(?!\s+(?:[\w-]+\s+){0,2}(?:must|should|shall|needs?|is|are|will)\b)"
+    )
+
     if _has(
         text,
         r"^\s*(?:please\s+)?(?:review|audit)\b",
-        r"(?:[.!?]|\n)\s*(?:please\s+)?(?:review|audit)\b",
+        sentence_review,
         r"\b(?:and|then|please|also)\s+(?:review|audit)\b",
         r"\b(?:can|could|would|will)\s+you\s+(?:review|audit)\b",
         r"\b(?:want|need)\s+(?:you\s+)?to\s+(?:review|audit)\b",
