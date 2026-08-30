@@ -251,8 +251,12 @@ def _global_mutation_prohibition(text: str) -> bool:
         r"\b(?:this|the)\s+(?:task|repo|repository|artifact|work)\s+is\s+read[- ]only\b",
         r"\b(?:work|operate|proceed|stay)\s+(?:in\s+)?read[- ]only(?:\s+mode)?\b",
         r"\b(?:make|keep)\s+(?:this|the)\s+(?:task|repo|repository|artifact|work)\s+read[- ]only\b",
+        # Inline inspection directives are task boundaries, unlike feature nouns
+        # such as "Implement read-only mode".
+        r"\b(?:review|audit|inspect|check|analyze)\b[^.;\n]{0,120}\bin\s+read[- ]only(?:\s+mode)?\b",
         r"^\s*(?:please\s+)?no mutations?\b",
         r"(?:[.!?]|\n)\s*(?:please\s+)?no mutations?\b",
+        r"(?:[,;:]\s*|\b(?:and|but|then|however|yet)\s+)(?:please\s+)?no mutations?\b",
         r"\b(?:make|do)\s+no mutations?\b",
         r"\bdo not (?:edit|modify|change|write|fix|repair)(?:\s+(?:anything|this|it|the (?:repo|repository|codebase)))?\s*(?:[.!?]|$)",
         r"\bwithout (?:editing|modifying|changing|writing)(?:\s+(?:anything|this|it))?\s*(?:[.!?]|$)",
