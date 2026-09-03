@@ -1,4 +1,5 @@
 import pathlib
+import re
 import unittest
 
 from scripts.validate_handoff import validate
@@ -47,7 +48,7 @@ Decision authority: implementation=builder; readiness=integrator
 Assurance profile: standard
 Mutation boundary: allowed src/**; read-only specs/**
 Reviewed/modified snapshot: abc123
-Execution status: EXECUTED
+Execution status: RAN
 Termination reason: N/A""",
         )
         self.assertEqual(validate(text, kind="pass"), [])
@@ -256,3 +257,69 @@ Done.
     def test_source_file_ends_with_a_newline(self):
         source = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "validate_handoff.py"
         self.assertTrue(source.read_text().endswith("\n"))
+
+
+class SpecCoherenceTests(unittest.TestCase):
+    """Regressions for the spec-coherence pass over SKILL.md and references/."""
+
+    ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+    def _pass_with(self, field):
+        return BASE_PASS.replace(
+            "Reviewed/modified snapshot: abc123",
+            field + "\nReviewed/modified snapshot: abc123",
+        )
+
+    def test_pass_status_axis_accepts_ran(self):
+        self.assertEqual([], validate(self._pass_with("Execution status: RAN"), kind="pass"))
+
+    def test_pass_status_axis_rejects_executed(self):
+        # `EXECUTED` is a claim-maturity state. Allowing it as a pass status is
+        # the ambiguity the rename removes, so it must fail closed here.
+        self.assertIn(
+            "invalid execution status: EXECUTED",
+            validate(self._pass_with("Execution status: EXECUTED"), kind="pass"),
+        )
+
+    def test_claim_maturity_still_uses_executed(self):
+        # The rename must not have leaked into the claim-maturity vocabulary.
+        text = (self.ROOT / "assets" / "AGENT-PASS.md").read_text()
+        self.assertIn("<ASSERTED|INSPECTED|EXECUTED|VERIFIED>", text)
+        self.assertIn("Execution status: <RAN|FAILED|SKIPPED|N/A>", text)
+
+    def test_skill_canonical_block_can_express_its_own_requirements(self):
+        block = (self.ROOT / "SKILL.md").read_text()
+        block = re.search(r"```text\nAgent pass:.*?\n```", block, re.S).group(0)
+        for field in (
+            "Mutation surface/transition:",  # runtime-adapters.md transition MUST
+            "Verification contracts:",       # SKILL.md rule 13
+            "Environment:",                  # environment-qualified evidence
+            "Previous snapshot:",            # from/to attribution
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, block)
+
+    def test_finding_lifecycle_has_exactly_one_owner(self):
+        # Restating the lifecycle in several files is how the four divergent
+        # copies arose; only the owning file may enumerate it.
+        owner = self.ROOT / "references" / "evidence-protocol.md"
+        self.assertIn("OPEN -> FIXED | DISPROVED | DEFERRED | BLOCKED", owner.read_text())
+        for name in ("iterative-review.md", "stagnation-escalation.md"):
+            with self.subTest(file=name):
+                text = (self.ROOT / "references" / name).read_text()
+                self.assertNotIn("authoritative finding lifecycle remains", text)
+                self.assertIn("evidence-protocol.md", text)
+
+    def test_every_reference_file_is_reachable(self):
+        docs = list(self.ROOT.glob("*.md")) + list(self.ROOT.glob("*/*.md"))
+        corpus = "\n".join(d.read_text() for d in docs)
+        for target in (self.ROOT / "references").glob("*.md"):
+            with self.subTest(file=target.name):
+                inbound = corpus.count(target.name) - target.read_text().count(target.name)
+                self.assertGreater(inbound, 0, f"{target.name} has no inbound link")
+
+    def test_review_template_carries_v04_reviewer_fields(self):
+        text = (self.ROOT / "assets" / "REVIEW.md").read_text()
+        for field in ("Mission anchor:", "Assurance profile:", "Verification contracts reviewed:"):
+            with self.subTest(field=field):
+                self.assertIn(field, text)

@@ -22,13 +22,7 @@ A runtime may use numeric retry thresholds, but Agent Relay does not prescribe p
 
 Do not add `STAGNATED` to the finding lifecycle or cycle termination vocabulary.
 
-The authoritative finding lifecycle remains:
-
-```text
-OPEN -> FIXED | DISPROVED | DEFERRED | BLOCKED
-```
-
-The bounded-cycle termination vocabulary remains owned by `iterative-review.md`.
+The finding lifecycle is owned by [`evidence-protocol.md`](evidence-protocol.md); the bounded-cycle termination vocabulary is owned by [`iterative-review.md`](iterative-review.md). Neither is restated here.
 
 Stagnation is recorded as evidence that the current route should be reconsidered.
 

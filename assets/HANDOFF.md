@@ -64,7 +64,9 @@
 ## Open findings
 | Finding | Lens | Severity | Observation/reviewed snapshot | State | Evidence + environment | Owning layer |
 |---|---|---|---|---|---|---|
-| <id> | <lens> | <P1/P2/etc> | <immutable-id> | OPEN/BLOCKED/DEFERRED | <evidence> | <owner> |
+| <id> | <lens> | <P1/P2/etc> | <immutable-id> | OPEN/DEFERRED/BLOCKED | <evidence> | <owner> |
+
+`DEFERRED` and `BLOCKED` findings stay listed here until resolved or carried into a successor cycle; see [../references/evidence-protocol.md](../references/evidence-protocol.md).
 
 If there are no open findings, write `None.` explicitly rather than leaving this section blank.
 

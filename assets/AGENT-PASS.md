@@ -13,7 +13,7 @@ Mutation boundary: <allowed + read-only/forbidden summary>
 Reviewed/modified snapshot: <immutable-id>
 Previous snapshot: <immutable-id or N/A>
 Environment: <if executable work occurred, otherwise N/A>
-Execution status: <EXECUTED|FAILED|SKIPPED|N/A>
+Execution status: <RAN|FAILED|SKIPPED|N/A>
 
 Cycle ID: <id or N/A>
 Cycle pass: <number or N/A>

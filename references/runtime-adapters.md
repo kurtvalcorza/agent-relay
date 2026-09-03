@@ -72,7 +72,7 @@ The example is illustrative rather than a universal serialization schema. A docu
 
 A substantive adapter result SHOULD include, when applicable:
 
-- `execution_status`: whether the requested pass actually executed (`EXECUTED`, `FAILED`, or `SKIPPED`);
+- `execution_status`: whether the requested pass actually ran (`RAN`, `FAILED`, or `SKIPPED`);
 - the exact `source_snapshot` evaluated or mutated;
 - findings and their observation snapshots;
 - executable or inspectable evidence;
@@ -213,4 +213,4 @@ An adapter cannot grant decision authority, lower an assurance profile, promote 
 
 ## Prior art
 
-Bounded loop/status/cancel/concurrency ideas were informed by provider-specific runtimes such as Claudex and Google Antigravity Teamwork. Those systems are mutable prior art, not Agent Relay dependencies or protocol authority. Provider-specific agent names, hooks, commands, and orchestration behavior remain non-normative.
+Bounded loop/status/cancel/concurrency ideas were informed by provider-specific runtimes such as Claudex and Google Antigravity Teamwork. Their pinned source identities and the limits of those pins are recorded in [`prior-art.md`](prior-art.md). Those systems are mutable prior art, not Agent Relay dependencies or protocol authority. Provider-specific agent names, hooks, commands, and orchestration behavior remain non-normative.

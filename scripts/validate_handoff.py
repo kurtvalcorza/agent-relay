@@ -93,7 +93,7 @@ MISSION_MODES = {
     "n/a",
 }
 ASSURANCE_PROFILES = {"exploratory", "standard", "consequential", "n/a"}
-EXECUTION_STATUSES = {"executed", "failed", "skipped", "n/a"}
+EXECUTION_STATUSES = {"ran", "failed", "skipped", "n/a"}
 TERMINATION_REASONS = {
     "no_new_findings",
     "bound_exhausted",

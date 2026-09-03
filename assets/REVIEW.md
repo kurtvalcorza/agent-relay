@@ -7,6 +7,9 @@
 - Role: Reviewer
 - Review lenses: <standard | design | security | reliability | test-gap | spec-conformance | regression | readiness>
 - Role/lens source: <explicit | inferred>
+- Mission mode: <mode or N/A>
+- Mission anchor: <immutable revision/digest of the planning state reviewed against, or N/A>
+- Assurance profile: <exploratory | standard | consequential | N/A>
 
 ## Reviewed state
 - Authoritative substrate: <repository / document / dataset / artifact / etc.>
@@ -21,6 +24,7 @@
 
 ## Evidence baseline
 - <existing tests, checks, source evidence, environment, or N/A>
+- Verification contracts reviewed: <contract + whether its oracle distinguishes the relevant failure condition, or N/A>
 
 ## Findings summary
 - Open: <count>
@@ -42,7 +46,7 @@
 - Owning layer: <owner>
 - Evidence: <source/reproduction/executable evidence>
 - Recommended action: <if useful>
-- State: <OPEN | FIXED | DISPROVED | DEFERRED | BLOCKED>
+- State: <OPEN | FIXED | DISPROVED | DEFERRED | BLOCKED> (see ../references/evidence-protocol.md)
 
 ## Executed or inspectable evidence
 - <environment + command/result/source revision>
