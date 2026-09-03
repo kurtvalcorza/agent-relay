@@ -280,6 +280,8 @@ _TABLE_DELIM_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
 _UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
 _NO_FINDINGS_RE = re.compile(r"^[-*+\s]*(none|n/?a|no open findings)[.\s]*$", re.IGNORECASE)
 CLAIM_MATURITIES = ("ASSERTED", "INSPECTED", "EXECUTED", "VERIFIED")
+# Owned by references/evidence-protocol.md.
+FINDING_STATES = {"open", "fixed", "disproved", "deferred", "blocked"}
 _MATURITY_SHAPED_RE = re.compile(r"\b[A-Z]{4,}\b")
 
 
@@ -362,23 +364,54 @@ def _finding_table_errors(section: str) -> list[str]:
             "observation/reviewed snapshot (or say `None.`)"
         ]
 
-    column, error = _snapshot_column(_table_cells(lines[header_index]))
+    header = _table_cells(lines[header_index])
+    column, error = _snapshot_column(header)
     if error:
         return [error]
 
+    state_column = next(
+        (p for p, name in enumerate(header) if "state" in name.lower()), None
+    )
+
+    errors: list[str] = []
     missing: list[str] = []
+    stateless: list[str] = []
+    invalid: list[str] = []
     for row in lines[header_index + 2:]:
         if not row.strip() or "|" not in row or _TABLE_DELIM_RE.match(row):
             continue
         cells = _table_cells(row)
+        name = cells[0] if cells and cells[0] else "(unnamed)"
         if column >= len(cells) or not cells[column]:
-            missing.append(cells[0] if cells and cells[0] else "(unnamed)")
+            missing.append(name)
+        if state_column is not None:
+            value = cells[state_column] if state_column < len(cells) else ""
+            if not value:
+                stateless.append(name)
+            elif not all(
+                part.strip().lower() in FINDING_STATES
+                for part in re.split(r"[/,|]| or ", value)
+                if part.strip()
+            ):
+                invalid.append(f"{name} ({value})")
+
     if missing:
-        return [
+        errors.append(
             "open finding rows are missing their observation/reviewed snapshot: "
             + ", ".join(missing)
-        ]
-    return []
+        )
+    if state_column is None:
+        errors.append("open finding table must carry a finding State column")
+    if stateless:
+        errors.append(
+            "open finding rows have a blank finding state: " + ", ".join(stateless)
+        )
+    if invalid:
+        errors.append(
+            "open finding rows declare an unrecognized finding state: "
+            + ", ".join(invalid)
+        )
+    return errors
 
 
 def _claim_maturity_errors(entries: list[str]) -> list[str]:

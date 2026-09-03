@@ -471,3 +471,87 @@ Done.
             "Reviewed/modified snapshot: abc123",
         )
         self.assertEqual([], validate(text, kind="pass"))
+
+
+class FindingStateRegressions(unittest.TestCase):
+    """V-1: PR #11's contract requires rejecting a blank finding state.
+
+    Nothing enforced the State column before 38b0009, and no test in the suite
+    referenced a blank state, so that contract item was never satisfied.
+    """
+
+    def _handoff(self, rows, header="| Finding | Observation/reviewed snapshot | State |"):
+        findings = header + "\n|---|---|---|\n" + rows
+        return f"""# Agent Relay Handoff
+
+## Mission
+Continue.
+## Current role
+Builder
+## Role source
+Explicit
+## Recommended role sequence
+Builder -> Verifier
+## Authoritative substrate
+Repository
+## Current immutable snapshot
+abc123
+## Mutation permissions
+### Strictly read-only / forbidden
+specs
+## Completed work
+Done.
+## Verified evidence
+None.
+## Open findings
+{findings}
+## Ordered next actions
+1. Verify.
+## Verification checkpoint
+Verify.
+## Completion criteria
+Done.
+"""
+
+    def test_blank_finding_state_is_rejected(self):
+        self.assertIn(
+            "open finding rows have a blank finding state: F1",
+            validate(self._handoff("| F1 | abc123 |  |"), kind="handoff"),
+        )
+
+    def test_unrecognized_finding_state_is_rejected(self):
+        self.assertIn(
+            "open finding rows declare an unrecognized finding state: F1 (LGTM)",
+            validate(self._handoff("| F1 | abc123 | LGTM |"), kind="handoff"),
+        )
+
+    def test_every_blank_state_row_is_named(self):
+        rows = "| F1 | abc123 |  |\n| F2 | def456 | OPEN |\n| F3 | ghi789 |  |"
+        self.assertIn(
+            "open finding rows have a blank finding state: F1, F3",
+            validate(self._handoff(rows), kind="handoff"),
+        )
+
+    def test_missing_state_column_is_rejected(self):
+        handoff = self._handoff(
+            "| F1 | abc123 | P1 |",
+            header="| Finding | Observation/reviewed snapshot | Severity |",
+        )
+        self.assertIn(
+            "open finding table must carry a finding State column",
+            validate(handoff, kind="handoff"),
+        )
+
+    def test_every_lifecycle_state_is_accepted(self):
+        for state in ("OPEN", "FIXED", "DISPROVED", "DEFERRED", "BLOCKED"):
+            with self.subTest(state=state):
+                self.assertEqual(
+                    [], validate(self._handoff(f"| F1 | abc123 | {state} |"), kind="handoff")
+                )
+
+    def test_template_style_alternatives_are_accepted(self):
+        # The shipped template offers `OPEN/DEFERRED/BLOCKED` in one cell.
+        self.assertEqual(
+            [],
+            validate(self._handoff("| F1 | abc123 | OPEN/DEFERRED/BLOCKED |"), kind="handoff"),
+        )
