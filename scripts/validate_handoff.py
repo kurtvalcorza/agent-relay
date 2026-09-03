@@ -122,6 +122,8 @@ def _outside_fences(text: str) -> list[str]:
                 continue
             lines.append(line)
             continue
+        # Inside a fence: only a same-character, at-least-as-long, bare
+        # marker closes it.
         if (
             match
             and match.group("marker")[0] == open_marker[0]
@@ -155,10 +157,14 @@ _BOUNDARY_SECTION = {
 
 
 def _section_body(text: str, heading: str) -> str:
-    """Return the body under `heading`, up to the next same-or-higher heading."""
+    """Return the body under `heading`, up to the next same-or-higher heading.
+
+    Sub-headings are kept, because the handoff template nests the boundary
+    statement under `### Strictly read-only / forbidden`.
+    """
 
     lines = text.splitlines()
-    marks = _outside_fences(text)
+    marks = _outside_fences(text)  # same length; fenced lines blanked
     start = None
     level = 0
     for index, mark in enumerate(marks):
@@ -239,6 +245,83 @@ def _validate_enum_field(
         )
 
 
+_TABLE_DELIM_RE = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
+
+
+def _table_cells(row: str) -> list[str]:
+    """Split one markdown table row into trimmed cells."""
+
+    stripped = row.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|"):
+        stripped = stripped[:-1]
+    return [cell.strip() for cell in stripped.split("|")]
+
+
+def _finding_table_errors(section: str) -> list[str]:
+    """Require each finding row to actually carry its observation snapshot.
+
+    Checking only that the word "snapshot" appears somewhere in the section is
+    satisfied by the template's own header row, so a table whose snapshot cells
+    are all empty -- or a section that says "no snapshot was recorded" -- would
+    pass while preserving nothing. The column must exist *and* every data row
+    must fill it. A stray pipe in prose (a shell command, say) is not a table:
+    a real table is identified by its `|---|` delimiter row.
+    """
+
+    lines = section.splitlines()
+    header_index = None
+    for index in range(1, len(lines)):
+        if _TABLE_DELIM_RE.match(lines[index]) and "|" in lines[index]:
+            if "|" in lines[index - 1]:
+                header_index = index - 1
+                break
+    if header_index is None:
+        return []
+
+    header = _table_cells(lines[header_index])
+    snapshot_columns = [
+        position
+        for position, name in enumerate(header)
+        if "snapshot" in name.lower()
+    ]
+    if not snapshot_columns:
+        return [
+            "open finding table must preserve an observation/reviewed snapshot"
+        ]
+
+    column = snapshot_columns[0]
+    for row in lines[header_index + 2:]:
+        if "|" not in row or not row.strip():
+            continue
+        if _TABLE_DELIM_RE.match(row):
+            continue
+        cells = _table_cells(row)
+        if column >= len(cells) or not cells[column]:
+            return [
+                "open finding row is missing its observation/reviewed snapshot"
+            ]
+    return []
+
+
+def _validate_enum_section(
+    text: str,
+    heading: str,
+    allowed: set[str],
+    errors: list[str],
+) -> None:
+    body = _section_body(text, heading).strip()
+    if not body:
+        return
+    value = body.splitlines()[0].strip()
+    if not value:
+        return
+    normalized = value.lower().replace("-", "_")
+    if normalized not in allowed:
+        errors.append(f"invalid {heading.lower()}: {value}")
+
+
 def validate(text: str, *, kind: str = "auto") -> list[str]:
     errors: list[str] = []
     selected_kind = _detect_kind(text) if kind == "auto" else kind
@@ -264,6 +347,9 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
                 errors.append(f"missing field: {prefix}")
 
     if selected_kind in {"handoff", "review"}:
+        # Scoped to the boundary section: unrelated prose elsewhere (an
+        # evidence note mentioning a "forbidden API", say) must not satisfy
+        # the record's one safety field.
         lowered = _section_body(
             text, _BOUNDARY_SECTION[selected_kind]
         ).lower()
@@ -276,8 +362,13 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
         open_findings = _section_body(text, "Open findings").strip()
         if not open_findings:
             errors.append("open findings section must say `None.` or carry findings")
-        if "|" in open_findings and "snapshot" not in open_findings.lower():
-            errors.append("open finding table must preserve an observation/reviewed snapshot")
+        errors.extend(_finding_table_errors(open_findings))
+
+        # Handoffs carry the v0.4 vocabularies as sections, not as `Key:` lines,
+        # so they need section-shaped validation or the vocabulary is unchecked
+        # on the protocol's primary transport.
+        _validate_enum_section(text, "Mission mode", MISSION_MODES, errors)
+        _validate_enum_section(text, "Assurance profile", ASSURANCE_PROFILES, errors)
 
     if selected_kind == "pass":
         boundary = _line_value(text, "Mutation boundary:")

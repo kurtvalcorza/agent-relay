@@ -1,3 +1,4 @@
+import pathlib
 import unittest
 
 from scripts.validate_handoff import validate
@@ -153,3 +154,105 @@ Done.
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class RegressionForReviewFindings(unittest.TestCase):
+    """Regressions for findings raised while reviewing the v0.4 head.
+
+    Each test fails against the original v0.4 implementation.
+    """
+
+    def _handoff(self, findings, mode="build", assurance="standard"):
+        return f"""# Agent Relay Handoff
+
+## Mission
+Continue.
+## Mission mode
+{mode}
+## Assurance profile
+{assurance}
+## Current role
+Builder
+## Role source
+Explicit
+## Recommended role sequence
+Builder -> Verifier
+## Authoritative substrate
+Repository
+## Current immutable snapshot
+abc123
+## Mutation permissions
+### Strictly read-only / forbidden
+specs
+## Completed work
+Done.
+## Verified evidence
+None.
+## Open findings
+{findings}
+## Ordered next actions
+1. Verify.
+## Verification checkpoint
+Verify.
+## Completion criteria
+Done.
+"""
+
+    def test_template_shaped_table_with_empty_snapshot_cells_is_rejected(self):
+        # The template's own header contains the word "snapshot", so a
+        # substring check over the section is satisfied by the header alone.
+        findings = (
+            "| Finding | Severity | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            "| F1 | P1 |  | OPEN |"
+        )
+        self.assertIn(
+            "open finding row is missing its observation/reviewed snapshot",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_prose_saying_no_snapshot_recorded_does_not_satisfy_the_check(self):
+        findings = (
+            "| Finding | State |\n"
+            "|---|---|\n"
+            "| F1 | OPEN |\n\n"
+            "No snapshot was recorded."
+        )
+        self.assertIn(
+            "open finding table must preserve an observation/reviewed snapshot",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_filled_snapshot_cells_are_accepted(self):
+        findings = (
+            "| Finding | Severity | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            "| F1 | P1 | abc123 | OPEN |\n"
+            "| F2 | P2 | def456 | BLOCKED |"
+        )
+        self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
+
+    def test_prose_finding_containing_a_shell_pipe_is_not_a_table(self):
+        findings = "F1: repro with `grep -c OPEN handoff.md | wc -l` at rev abc123."
+        self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
+
+    def test_handoff_rejects_invalid_mission_mode(self):
+        errors = validate(self._handoff("None.", mode="teleport"), kind="handoff")
+        self.assertIn("invalid mission mode: teleport", errors)
+
+    def test_handoff_rejects_invalid_assurance_profile(self):
+        errors = validate(self._handoff("None.", assurance="banana"), kind="handoff")
+        self.assertIn("invalid assurance profile: banana", errors)
+
+    def test_handoff_accepts_declared_vocabulary(self):
+        self.assertEqual(
+            [],
+            validate(
+                self._handoff("None.", mode="understand", assurance="consequential"),
+                kind="handoff",
+            ),
+        )
+
+    def test_source_file_ends_with_a_newline(self):
+        source = pathlib.Path(__file__).resolve().parents[1] / "scripts" / "validate_handoff.py"
+        self.assertTrue(source.read_text().endswith("\n"))
