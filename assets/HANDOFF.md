@@ -68,6 +68,9 @@
 
 `DEFERRED` and `BLOCKED` findings stay listed here until resolved or carried into a successor cycle; see [../references/evidence-protocol.md](../references/evidence-protocol.md).
 
+Record findings in the table above rather than as prose: free prose cannot be split into
+findings reliably, so a per-finding snapshot cannot be enforced there.
+
 If there are no open findings, write `None.` explicitly rather than leaving this section blank.
 
 ## Environment-specific gaps

@@ -156,15 +156,21 @@ _BOUNDARY_SECTION = {
 }
 
 
-def _section_body(text: str, heading: str) -> str:
+def _section_body(text: str, heading: str, *, strip_fences: bool = False) -> str:
     """Return the body under `heading`, up to the next same-or-higher heading.
 
     Sub-headings are kept, because the handoff template nests the boundary
     statement under `### Strictly read-only / forbidden`.
+
+    With `strip_fences`, fenced lines come back blanked, matching how the rest
+    of the validator reads records. Structural checks use that view so a table
+    shown inside a fenced example is not mistaken for the record's own data.
     """
 
     lines = text.splitlines()
     marks = _outside_fences(text)  # same length; fenced lines blanked
+    if strip_fences:
+        lines = marks
     start = None
     level = 0
     for index, mark in enumerate(marks):
@@ -201,6 +207,31 @@ def _line_value(text: str, prefix: str) -> str | None:
         if stripped.startswith(prefix):
             return stripped[len(prefix):].strip()
     return None
+
+
+def _claim_entries(text: str) -> list[str]:
+    """Claim lines from a pass record's `Claims / evidence maturity` block.
+
+    The block appears either as an inline value or as bullets beneath the
+    label, so both shapes are collected.
+    """
+
+    lines = _outside_fences(text)
+    entries: list[str] = []
+    for index, line in enumerate(lines):
+        if not line.strip().startswith("Claims / evidence maturity:"):
+            continue
+        inline = line.split(":", 1)[1].strip()
+        if inline:
+            entries.append(inline)
+        for following in lines[index + 1:]:
+            if not following.strip():
+                break
+            if not following.lstrip().startswith(("-", "*", "+")):
+                break
+            entries.append(following)
+        break
+    return entries
 
 
 def _detect_kind(text: str) -> str:
@@ -245,29 +276,74 @@ def _validate_enum_field(
         )
 
 
-_TABLE_DELIM_RE = re.compile(r"^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$")
+_TABLE_DELIM_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
+_UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
+_NO_FINDINGS_RE = re.compile(r"^[-*+\s]*(none|n/?a|no open findings)[.\s]*$", re.IGNORECASE)
+CLAIM_MATURITIES = ("ASSERTED", "INSPECTED", "EXECUTED", "VERIFIED")
+_MATURITY_SHAPED_RE = re.compile(r"\b[A-Z]{4,}\b")
 
 
 def _table_cells(row: str) -> list[str]:
-    """Split one markdown table row into trimmed cells."""
+    """Split one markdown table row into trimmed cells.
+
+    GFM permits an escaped pipe inside a cell. Splitting on every pipe would
+    shift every column index to its right, so a snapshot column could be read
+    from the wrong cell.
+    """
 
     stripped = row.strip()
     if stripped.startswith("|"):
         stripped = stripped[1:]
-    if stripped.endswith("|"):
+    if stripped.endswith("|") and not stripped.endswith("\\|"):
         stripped = stripped[:-1]
-    return [cell.strip() for cell in stripped.split("|")]
+    return [
+        cell.strip().replace("\\|", "|")
+        for cell in _UNESCAPED_PIPE_RE.split(stripped)
+    ]
+
+
+def _snapshot_column(header: list[str]) -> tuple[int | None, str | None]:
+    """Locate the column that carries each finding's observation snapshot.
+
+    Taking the first header merely containing "snapshot" lets an unrelated but
+    filled column (a `Current snapshot`, say) stand in for an empty
+    observation/reviewed column, which is the bypass this check exists to stop.
+    Prefer the canonical column; accept a lone snapshot column; refuse to guess
+    between several.
+    """
+
+    lowered = [name.lower() for name in header]
+    canonical = [
+        position
+        for position, name in enumerate(lowered)
+        if "snapshot" in name and ("observation" in name or "reviewed" in name)
+    ]
+    if canonical:
+        return canonical[0], None
+
+    snapshots = [p for p, name in enumerate(lowered) if "snapshot" in name]
+    if not snapshots:
+        return None, "open finding table must preserve an observation/reviewed snapshot"
+    if len(snapshots) > 1:
+        return None, (
+            "open finding table has several snapshot columns; name the canonical "
+            "observation/reviewed snapshot column"
+        )
+    return snapshots[0], None
 
 
 def _finding_table_errors(section: str) -> list[str]:
-    """Require each finding row to actually carry its observation snapshot.
+    """Require each carried finding to actually record its observation snapshot.
 
-    Checking only that the word "snapshot" appears somewhere in the section is
-    satisfied by the template's own header row, so a table whose snapshot cells
-    are all empty -- or a section that says "no snapshot was recorded" -- would
-    pass while preserving nothing. The column must exist *and* every data row
-    must fill it. A stray pipe in prose (a shell command, say) is not a table:
-    a real table is identified by its `|---|` delimiter row.
+    A substring test for "snapshot" over the section is satisfied by the
+    template's own header row, so a table whose snapshot cells are all empty --
+    or a section reading "no snapshot was recorded" -- would pass while
+    preserving nothing. The canonical column must exist *and* every data row
+    must fill it.
+
+    Findings recorded as free prose are refused rather than parsed: arbitrary
+    prose cannot be split into findings reliably, so per-finding snapshots
+    cannot be enforced there. A section declaring no findings is still fine.
     """
 
     lines = section.splitlines()
@@ -277,32 +353,56 @@ def _finding_table_errors(section: str) -> list[str]:
             if "|" in lines[index - 1]:
                 header_index = index - 1
                 break
-    if header_index is None:
-        return []
 
-    header = _table_cells(lines[header_index])
-    snapshot_columns = [
-        position
-        for position, name in enumerate(header)
-        if "snapshot" in name.lower()
-    ]
-    if not snapshot_columns:
+    if header_index is None:
+        if all(not line.strip() or _NO_FINDINGS_RE.match(line) for line in lines):
+            return []
         return [
-            "open finding table must preserve an observation/reviewed snapshot"
+            "open findings must use the finding table so each row records its "
+            "observation/reviewed snapshot (or say `None.`)"
         ]
 
-    column = snapshot_columns[0]
+    column, error = _snapshot_column(_table_cells(lines[header_index]))
+    if error:
+        return [error]
+
+    missing: list[str] = []
     for row in lines[header_index + 2:]:
-        if "|" not in row or not row.strip():
-            continue
-        if _TABLE_DELIM_RE.match(row):
+        if not row.strip() or "|" not in row or _TABLE_DELIM_RE.match(row):
             continue
         cells = _table_cells(row)
         if column >= len(cells) or not cells[column]:
-            return [
-                "open finding row is missing its observation/reviewed snapshot"
-            ]
+            missing.append(cells[0] if cells and cells[0] else "(unnamed)")
+    if missing:
+        return [
+            "open finding rows are missing their observation/reviewed snapshot: "
+            + ", ".join(missing)
+        ]
     return []
+
+
+def _claim_maturity_errors(entries: list[str]) -> list[str]:
+    """Reject a claim that declares a maturity outside the vocabulary.
+
+    Presence is not required: a record may describe a claim without grading it,
+    and the documented templates must stay copy-pasteable. What must not pass is
+    a claim asserting a maturity that does not exist, which would otherwise read
+    as a graded claim while meaning nothing.
+    """
+
+    errors = []
+    for entry in entries:
+        text = entry.strip().lstrip("-*+ ").strip()
+        if not text or _NO_FINDINGS_RE.match(entry):
+            continue
+        if any(token in entry for token in CLAIM_MATURITIES):
+            continue
+        declared = _MATURITY_SHAPED_RE.findall(entry)
+        if declared:
+            errors.append(
+                f"claim declares an unrecognized maturity {declared[0]}: {text}"
+            )
+    return errors
 
 
 def _validate_enum_section(
@@ -359,10 +459,22 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
             )
 
     if selected_kind == "handoff":
-        open_findings = _section_body(text, "Open findings").strip()
+        open_findings = _section_body(
+            text, "Open findings", strip_fences=True
+        ).strip()
         if not open_findings:
             errors.append("open findings section must say `None.` or carry findings")
         errors.extend(_finding_table_errors(open_findings))
+
+        errors.extend(
+            _claim_maturity_errors(
+                _section_body(
+                    text,
+                    "Completed but not independently verified",
+                    strip_fences=True,
+                ).splitlines()
+            )
+        )
 
         # Handoffs carry the v0.4 vocabularies as sections, not as `Key:` lines,
         # so they need section-shaped validation or the vocabulary is unchecked
@@ -378,6 +490,8 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
                 errors.append(
                     "pass mutation boundary is not explicit (no allowed/read-only/forbidden statement)"
                 )
+
+        errors.extend(_claim_maturity_errors(_claim_entries(text)))
 
         _validate_enum_field(text, "Mission mode:", MISSION_MODES, errors)
         _validate_enum_field(text, "Assurance profile:", ASSURANCE_PROFILES, errors)

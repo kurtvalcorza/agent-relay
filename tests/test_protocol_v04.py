@@ -208,7 +208,7 @@ Done.
             "| F1 | P1 |  | OPEN |"
         )
         self.assertIn(
-            "open finding row is missing its observation/reviewed snapshot",
+            "open finding rows are missing their observation/reviewed snapshot: F1",
             validate(self._handoff(findings), kind="handoff"),
         )
 
@@ -233,9 +233,36 @@ Done.
         )
         self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
 
-    def test_prose_finding_containing_a_shell_pipe_is_not_a_table(self):
-        findings = "F1: repro with `grep -c OPEN handoff.md | wc -l` at rev abc123."
+    def test_a_pipe_in_evidence_does_not_break_table_parsing(self):
+        # R-3 was that a stray pipe made the validator treat prose as a
+        # malformed table. A pipe inside a real cell must not disturb the
+        # columns either -- see W-4.
+        findings = (
+            "| Finding | Evidence | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            r"| F1 | `grep -c OPEN \| wc -l` | abc123 | OPEN |"
+        )
         self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
+
+    def test_prose_findings_are_refused_rather_than_parsed(self):
+        # W-6: prose cannot be split into findings reliably, so per-finding
+        # snapshots cannot be enforced there. The refusal is structural and no
+        # longer keys on a pipe being present.
+        for findings in (
+            "F1: repro with `grep -c OPEN handoff.md | wc -l` at rev abc123.",
+            "- F1: parser can drop data",
+        ):
+            with self.subTest(findings=findings):
+                self.assertIn(
+                    "open findings must use the finding table so each row records "
+                    "its observation/reviewed snapshot (or say `None.`)",
+                    validate(self._handoff(findings), kind="handoff"),
+                )
+
+    def test_no_findings_declarations_still_validate(self):
+        for findings in ("None.", "- none", "N/A"):
+            with self.subTest(findings=findings):
+                self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
 
     def test_handoff_rejects_invalid_mission_mode(self):
         errors = validate(self._handoff("None.", mode="teleport"), kind="handoff")
@@ -323,3 +350,124 @@ class SpecCoherenceTests(unittest.TestCase):
         for field in ("Mission anchor:", "Assurance profile:", "Verification contracts reviewed:"):
             with self.subTest(field=field):
                 self.assertIn(field, text)
+
+
+class ReviewerBypassRegressions(unittest.TestCase):
+    """The reviewer's reproductions against 693bde77. Each validated clean then."""
+
+    def _handoff(self, findings):
+        return f"""# Agent Relay Handoff
+
+## Mission
+Continue.
+## Current role
+Builder
+## Role source
+Explicit
+## Recommended role sequence
+Builder -> Verifier
+## Authoritative substrate
+Repository
+## Current immutable snapshot
+abc123
+## Mutation permissions
+### Strictly read-only / forbidden
+specs
+## Completed work
+Done.
+## Verified evidence
+None.
+## Open findings
+{findings}
+## Ordered next actions
+1. Verify.
+## Verification checkpoint
+Verify.
+## Completion criteria
+Done.
+"""
+
+    def test_w1_single_hyphen_delimiter_row_is_a_table(self):
+        findings = "| Finding | State |\n| - | - |\n| F1 | OPEN |"
+        self.assertIn(
+            "open finding table must preserve an observation/reviewed snapshot",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_w4_escaped_pipe_does_not_shift_the_snapshot_column(self):
+        findings = (
+            "| Finding | Evidence | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            r"| F1 | a \| b |  | OPEN |"
+        )
+        self.assertIn(
+            "open finding rows are missing their observation/reviewed snapshot: F1",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_w5_a_filled_unrelated_snapshot_column_is_not_a_substitute(self):
+        findings = (
+            "| Finding | Current snapshot | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            "| F1 | abc123 |  | OPEN |"
+        )
+        self.assertIn(
+            "open finding rows are missing their observation/reviewed snapshot: F1",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_w5_ambiguous_snapshot_columns_are_refused(self):
+        findings = (
+            "| Finding | Base snapshot | Head snapshot | State |\n"
+            "|---|---|---|---|\n"
+            "| F1 | abc123 | def456 | OPEN |"
+        )
+        self.assertIn(
+            "open finding table has several snapshot columns; name the canonical "
+            "observation/reviewed snapshot column",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_w6_carried_prose_finding_is_refused(self):
+        self.assertIn(
+            "open findings must use the finding table so each row records its "
+            "observation/reviewed snapshot (or say `None.`)",
+            validate(self._handoff("- F1: parser can drop data"), kind="handoff"),
+        )
+
+    def test_w3_every_unsnapshotted_row_is_named(self):
+        findings = (
+            "| Finding | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|\n"
+            "| F1 |  | OPEN |\n"
+            "| F2 | abc123 | OPEN |\n"
+            "| F3 |  | OPEN |"
+        )
+        errors = validate(self._handoff(findings), kind="handoff")
+        self.assertIn(
+            "open finding rows are missing their observation/reviewed snapshot: F1, F3",
+            errors,
+        )
+
+    def test_fenced_example_table_is_not_read_as_record_data(self):
+        findings = "None.\n\n```markdown\n| Finding | State |\n|---|---|\n| F1 | OPEN |\n```"
+        self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
+
+    def test_w2_unrecognized_claim_maturity_is_rejected(self):
+        text = BASE_PASS.replace(
+            "Reviewed/modified snapshot: abc123",
+            "Claims / evidence maturity: parser is correct: PROVEN @ abc123\n"
+            "Reviewed/modified snapshot: abc123",
+        )
+        errors = validate(text, kind="pass")
+        self.assertTrue(
+            any("unrecognized maturity PROVEN" in e for e in errors), errors
+        )
+
+    def test_w2_valid_claim_maturity_passes(self):
+        text = BASE_PASS.replace(
+            "Reviewed/modified snapshot: abc123",
+            "Claims / evidence maturity: parser is correct: EXECUTED @ abc123\n"
+            "Reviewed/modified snapshot: abc123",
+        )
+        self.assertEqual([], validate(text, kind="pass"))
