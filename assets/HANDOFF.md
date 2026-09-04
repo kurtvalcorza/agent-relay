@@ -68,9 +68,11 @@
 ## Open findings
 | Finding | Lens | Severity | Observation/reviewed snapshot | State | Evidence + environment | Owning layer |
 |---|---|---|---|---|---|---|
-| <id> | <lens> | <P1/P2/etc> | <immutable-id> | <OPEN | FIXED | DISPROVED | DEFERRED | BLOCKED> | <evidence> | <owner> |
+| <id> | <lens> | <P1/P2/etc> | <immutable-id> | <state> | <evidence> | <owner> |
 
-Each row records one actual lifecycle state. Do not put alternatives such as `OPEN/DEFERRED/BLOCKED` in a filled State cell.
+`<state>` is one of `OPEN`, `FIXED`, `DISPROVED`, `DEFERRED`, `BLOCKED`. Each row records one
+actual lifecycle state: do not leave alternatives such as `OPEN/DEFERRED/BLOCKED` in a filled
+State cell. Avoid unescaped `|` inside any cell — it starts a new column.
 
 `DEFERRED` and `BLOCKED` findings stay listed here until resolved or carried into a successor cycle; see [../references/evidence-protocol.md](../references/evidence-protocol.md).
 

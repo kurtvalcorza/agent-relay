@@ -153,8 +153,6 @@ Done.
         )
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class RegressionForReviewFindings(unittest.TestCase):
@@ -549,9 +547,42 @@ Done.
                     [], validate(self._handoff(f"| F1 | abc123 | {state} |"), kind="handoff")
                 )
 
-    def test_template_style_alternatives_are_accepted(self):
-        # The shipped template offers `OPEN/DEFERRED/BLOCKED` in one cell.
-        self.assertEqual(
-            [],
-            validate(self._handoff("| F1 | abc123 | OPEN/DEFERRED/BLOCKED |"), kind="handoff"),
+    def test_template_style_alternatives_are_rejected(self):
+        # A filled row must commit to one state. Leaving the template's menu of
+        # alternatives in the cell is the blank-state class V-1 exists to catch.
+        for value in ("OPEN/DEFERRED/BLOCKED", "OPEN/", "/", "OPEN DEFERRED"):
+            with self.subTest(value=value):
+                self.assertNotEqual(
+                    [],
+                    validate(self._handoff(f"| F1 | abc123 | {value} |"), kind="handoff"),
+                )
+
+
+class ShippedTemplateIntegrity(unittest.TestCase):
+    """The shipped templates must parse under the rules they document."""
+
+    ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+    def test_handoff_finding_row_matches_its_header(self):
+        # An unescaped `|` inside a placeholder silently adds columns, which is
+        # how the State cell once came to read `<OPEN`.
+        from scripts.validate_handoff import _table_cells
+
+        lines = (self.ROOT / "assets" / "HANDOFF.md").read_text().splitlines()
+        index = next(i for i, l in enumerate(lines) if l.startswith("| Finding | Lens |"))
+        header = _table_cells(lines[index])
+        row = _table_cells(lines[index + 2])
+        self.assertEqual(len(header), len(row), f"header {header} vs row {row}")
+
+    def test_every_test_class_runs_as_a_module(self):
+        # The main guard must follow every class, or `python -m` silently runs
+        # only the classes defined above it.
+        source = pathlib.Path(__file__).read_text()
+        self.assertGreater(
+            source.index('if __name__ == "__main__":'),
+            source.rindex("\nclass "),
         )
+
+
+if __name__ == "__main__":
+    unittest.main()
