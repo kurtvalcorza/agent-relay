@@ -195,10 +195,13 @@ class CycleSemanticRepairs(unittest.TestCase):
                     "termination reason NO_NEW_FINDINGS requires execution status RAN",
                     validate(text, kind="pass"),
                 )
+        # A termination reason is a cycle-level outcome, so the positive case
+        # must name the cycle it reports on.
         self.assertEqual(
             [],
             validate(
                 pass_with(
+                    "Cycle ID: c1",
                     "Execution status: RAN",
                     "Termination reason: NO_NEW_FINDINGS",
                 ),

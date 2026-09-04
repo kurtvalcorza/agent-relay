@@ -409,8 +409,11 @@ def _finding_table_errors(section: str) -> list[str]:
     stateless: list[str] = []
     invalid: list[str] = []
 
+    anonymous = 0
     for row in data_rows:
         cells = _table_cells(row)
+        if not cells or not cells[0]:
+            anonymous += 1
         name = cells[0] if cells and cells[0] else "(unnamed)"
         if snapshot_column >= len(cells) or not cells[snapshot_column]:
             missing.append(name)
@@ -422,6 +425,16 @@ def _finding_table_errors(section: str) -> list[str]:
             elif normalized not in FINDING_STATES:
                 invalid.append(f"{name} ({value})")
 
+    if not data_rows:
+        errors.append(
+            "open findings table has no finding rows; add each finding as a row "
+            "or say `None.`"
+        )
+    if anonymous:
+        errors.append(
+            f"open finding rows have no identifier: {anonymous} row(s) with a blank "
+            "first cell; each finding needs a stable ID to be carried across snapshots"
+        )
     if missing:
         errors.append(
             "open finding rows are missing their observation/reviewed snapshot: "
@@ -493,7 +506,10 @@ def _pass_cycle_continuity_errors(text: str) -> list[str]:
     ledger = _line_value(text, "Finding ledger:")
     continuity = _block_entries(text, "Finding continuity:")
     ledger_present = bool(ledger and ledger.lower() not in {"n/a", "na", "none"})
-    continuity_present = any(entry.strip().lstrip("-*+ ").strip() for entry in continuity)
+    continuity_present = any(
+        entry.strip().lstrip("-*+ ").strip() and not _NO_FINDINGS_RE.match(entry)
+        for entry in continuity
+    )
     if ledger_present or continuity_present:
         return []
     return [
@@ -589,6 +605,16 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
             if not execution or execution.lower().replace("-", "_") != "ran":
                 errors.append(
                     "termination reason NO_NEW_FINDINGS requires execution status RAN"
+                )
+
+        # A termination reason is a cycle-level outcome, so it needs the cycle
+        # identity it claims a result for; otherwise the record is unattributable
+        # to the planned passes or bounds it reports on.
+        if termination and termination.lower().replace("-", "_") not in {"n/a", "na"}:
+            cycle_id = _line_value(text, "Cycle ID:")
+            if not cycle_id or cycle_id.lower() in {"n/a", "na"}:
+                errors.append(
+                    f"termination reason {termination} requires a Cycle ID"
                 )
 
         errors.extend(_pass_cycle_continuity_errors(text))

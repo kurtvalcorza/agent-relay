@@ -335,7 +335,7 @@ Use [assets/HANDOFF.md](assets/HANDOFF.md).
 
 After a significant pass, leave a compact durable record when the substrate supports it. v0.4 permits optional mission/cycle/authority metadata while preserving the v0.3 minimum.
 
-[assets/AGENT-PASS.md](assets/AGENT-PASS.md) is the canonical record; the block below is the common subset and omits the cycle-detail fields (`Cycle pass`, `Planned lens sequence`, `Cycle budget`, `Predecessor pass/checkpoint`, `Stagnation signal`). Three fields here are conditionally required rather than optional: a mutation-producing pass MUST record `Mutation surface/transition` (see **Bounded iterative review and runtime adapters**), executable work MUST record `Environment`, and a consequential requirement MUST record a `Verification contracts` entry or an explicit `verification: none — reason` (rule 13).
+[assets/AGENT-PASS.md](assets/AGENT-PASS.md) is the canonical record; the block below is the common subset and omits the cycle-detail fields (`Cycle pass`, `Planned lens sequence`, `Cycle budget`, `Predecessor pass/checkpoint`, `Stagnation signal`). Three fields here are conditionally required rather than optional: a mutation-producing pass MUST record `Mutation surface/transition` (see **Bounded iterative review and runtime adapters**), executable work MUST record `Environment`, and a consequential requirement MUST record a `Verification contracts` entry or an explicit `verification: none — reason` (rule 13), a non-`N/A` `Termination reason` MUST carry the `Cycle ID` it reports on, and a cycle pass with findings MUST carry `Finding continuity` entries or an immutable `Finding ledger`.
 
 ```text
 Agent pass: <short-name>
@@ -355,6 +355,9 @@ Environment: <if executable work occurred, otherwise N/A>
 Execution status: <RAN|FAILED|SKIPPED|N/A>
 Cycle ID: <id or N/A>
 Termination reason: <NO_NEW_FINDINGS|BOUND_EXHAUSTED|BLOCKED|CANCELLED|N/A>
+Finding ledger: <immutable ledger reference, or N/A>
+Finding continuity:
+- <finding id + observation snapshot + state + evidence + owner, or N/A>
 Claims / evidence maturity: <claim + state + snapshot/environment>
 Verification contracts: <claim/requirement -> falsifiable procedure/oracle, or `verification: none — reason`>
 Findings: <count>

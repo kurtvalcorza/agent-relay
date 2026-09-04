@@ -448,5 +448,116 @@ class ShippedTemplateIntegrity(unittest.TestCase):
         self.assertEqual(len(header), len(row), f"header {header} vs row {row}")
 
 
+class CodexSecondRoundRegressions(unittest.TestCase):
+    """Codex findings on f8ad476, verified and fixed at the current head."""
+
+    HEADER = "| Finding | Observation/reviewed snapshot | State |\n|---|---|---|"
+
+    def _handoff(self, findings):
+        return f"""# Agent Relay Handoff
+
+## Mission
+M.
+## Current role
+Builder
+## Role source
+Explicit
+## Recommended role sequence
+Builder -> Verifier
+## Authoritative substrate
+Repo
+## Current immutable snapshot
+abc123
+## Mutation permissions
+### Strictly read-only / forbidden
+specs
+## Completed work
+D.
+## Verified evidence
+None.
+## Open findings
+{findings}
+## Ordered next actions
+1. Go.
+## Verification checkpoint
+V.
+## Completion criteria
+C.
+"""
+
+    def _pass(self, extra):
+        return BASE_PASS.replace(
+            "Reviewed/modified snapshot: abc123",
+            extra + "\nReviewed/modified snapshot: abc123",
+        )
+
+    def test_header_only_findings_table_is_refused(self):
+        self.assertIn(
+            "open findings table has no finding rows; add each finding as a row "
+            "or say `None.`",
+            validate(self._handoff(self.HEADER), kind="handoff"),
+        )
+
+    def test_finding_row_without_an_identifier_is_refused(self):
+        errors = validate(
+            self._handoff(self.HEADER + "\n|  | abc123 | OPEN |"), kind="handoff"
+        )
+        self.assertTrue(
+            any("have no identifier" in e for e in errors), errors
+        )
+
+    def test_a_complete_row_still_validates(self):
+        self.assertEqual(
+            [],
+            validate(self._handoff(self.HEADER + "\n| F1 | abc123 | OPEN |"), kind="handoff"),
+        )
+
+    def test_sentinel_continuity_does_not_satisfy_the_cycle_rule(self):
+        self.assertIn(
+            "cycle pass with findings must carry per-finding continuity or an "
+            "immutable Finding ledger",
+            validate(
+                self._pass(
+                    "Cycle ID: c1\nFindings: 1\nFinding ledger: N/A\n"
+                    "Finding continuity:\n- none"
+                ),
+                kind="pass",
+            ),
+        )
+
+    def test_termination_reason_requires_a_cycle_id(self):
+        self.assertIn(
+            "termination reason NO_NEW_FINDINGS requires a Cycle ID",
+            validate(
+                self._pass("Execution status: RAN\nTermination reason: NO_NEW_FINDINGS"),
+                kind="pass",
+            ),
+        )
+
+    def test_termination_reason_with_a_cycle_id_validates(self):
+        self.assertEqual(
+            [],
+            validate(
+                self._pass(
+                    "Cycle ID: c1\nFindings: 0\nExecution status: RAN\n"
+                    "Termination reason: NO_NEW_FINDINGS"
+                ),
+                kind="pass",
+            ),
+        )
+
+    def test_skill_block_can_represent_a_cycle_pass(self):
+        import re
+
+        block = re.search(
+            r"```text\nAgent pass:.*?\n```",
+            (pathlib.Path(__file__).resolve().parents[1] / "SKILL.md").read_text(),
+            re.S,
+        ).group(0)
+        for field in ("Cycle ID:", "Finding ledger:", "Finding continuity:"):
+            with self.subTest(field=field):
+                self.assertIn(field, block)
+
+
 if __name__ == "__main__":
     unittest.main()
