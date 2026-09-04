@@ -46,6 +46,40 @@ On this substrate, the review channel of a named PR or issue is its review threa
 
 A subject noun is not a lens signal. `review the security module` remains a standard implementation review unless security-review intent is explicit.
 
+## External review handoff
+
+A repository workflow may hand a named pull request to an external or hosted code-review agent when independent review is useful and the substrate supports it. This is a downstream Reviewer handoff, not a new Agent Relay role.
+
+Before requesting the external review:
+- capture the repository and pull-request identity;
+- capture the immutable PR head SHA being handed off;
+- preserve mutation and decision-authority boundaries;
+- record what the external reviewer is expected to assess when the review scope is narrower than a normal implementation review.
+
+The external reviewer receives review-recording authority only to the extent supported by the named PR's review channel. A review handoff does **not** authorize the external reviewer, the handing-off agent, or a later receiving agent to merge, push fixes, resolve threads, approve on the user's behalf, release, or otherwise broaden mutation/decision authority.
+
+Do not automatically merge after requesting an external review. Review handoff and merge are separate actions; merge requires its own authority and readiness decision.
+
+### GitHub Copilot Code Review
+
+GitHub Copilot Code Review is one supported example of an external Reviewer on the GitHub substrate. Request it through the review mechanism available to the current GitHub environment rather than depending on one hard-coded username, API field, or trigger syntax.
+
+Copilot review status may be exposed differently from an ordinary human/team review request. In particular, a Copilot review can be visibly running in GitHub even when the normal requested-reviewers list is empty. Therefore:
+- an empty `requested_reviewers` result is **not** sufficient evidence that the Copilot handoff failed;
+- treat a visible/running Copilot review, substrate-native review status, or resulting Copilot review record as stronger evidence that the handoff started;
+- if the API and GitHub UI disagree about whether the review is running, preserve the discrepancy rather than inventing a failure or success state;
+- do not repeatedly re-request the review merely because the ordinary reviewer list is empty.
+
+When the Copilot review completes:
+1. fetch the current PR head and the immutable revision Copilot actually reviewed;
+2. ingest Copilot findings as Reviewer findings, preserving their reviewed snapshot and evidence;
+3. do not treat the provider identity as evidentiary authority or automatic approval;
+4. route valid unresolved findings through `Integrator -> Builder -> Verifier` when repair is authorized;
+5. if the external review is clean, use it as review evidence, then route consequential merge/readiness through Verifier and Integrator as usual;
+6. if the PR head moved after the reviewed snapshot, do not silently extend that review to the new head—re-review or otherwise verify the changed surface as required by the assurance profile.
+
+A hosted reviewer may also fail, be unavailable, hit usage limits, or return no review record. Record that external-state outcome explicitly; do not convert non-execution into a clean review.
+
 ## Stacked changes
 
 For a stack such as:
