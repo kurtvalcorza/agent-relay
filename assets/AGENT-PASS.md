@@ -3,19 +3,47 @@
 Agent pass: <name>
 Role: <builder|reviewer|executor|verifier|integrator>
 Review lenses: <Reviewer only; otherwise N/A>
+Mission mode: <build|fix|test|orchestrate|operate|understand|plan|analyze|communicate|N/A>
 Role source: <explicit|inferred>
 Role sequence: <current -> next -> ...>
+Mission anchor: <immutable revision/digest or N/A>
+Decision authority: <summary or durable reference>
+Assurance profile: <exploratory|standard|consequential|N/A>
+Mutation boundary: <allowed + read-only/forbidden summary>
 Reviewed/modified snapshot: <immutable-id>
-Environment: <if executable work occurred>
+Previous snapshot: <immutable-id or N/A>
+Environment: <if executable work occurred, otherwise N/A>
+Execution status: <RAN|FAILED|SKIPPED|N/A>
+
+Cycle ID: <id or N/A>
+Cycle pass: <number or N/A>
+Planned lens sequence: <sequence or N/A>
+Cycle budget: <bound or N/A>
+Termination reason: <NO_NEW_FINDINGS|BOUND_EXHAUSTED|BLOCKED|CANCELLED|N/A>
+Mutation surface/transition: <surface + from/to snapshots + pass/cycle attribution, or N/A>
+Predecessor pass/checkpoint: <id or N/A>
+Stagnation signal: <reason/evidence or none>
+
+Claims / evidence maturity:
+- <claim>: <ASSERTED|INSPECTED|EXECUTED|VERIFIED> @ <snapshot/environment>
+
+Verification contracts:
+- <claim/requirement -> falsifiable procedure/oracle, or `verification: none — reason`>
 
 Findings: <count>
 Fixed: <count>
 Disproved: <count>
 Deferred: <count>
 Blocked: <count>
+Finding ledger: <immutable ledger reference or N/A>
+
+Finding continuity:
+- <finding-id>: observation=<immutable-id>; state=<OPEN|FIXED|DISPROVED|DEFERRED|BLOCKED>; evidence=<environment-qualified evidence>; owner=<owning layer>
+
+For a bounded review cycle with one or more findings, preserve per-finding continuity here or point `Finding ledger` at an immutable durable ledger. Aggregate counts alone are not sufficient to distinguish new, persistent, or carried findings across snapshots.
 
 Executable/inspectable evidence:
-- <evidence>
+- <claim + evidence + environment>
 
 Verification checkpoint:
 - <claim/action requiring verifier behavior, or N/A>

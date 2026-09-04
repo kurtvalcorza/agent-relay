@@ -66,6 +66,20 @@ Agent Relay v0.3.1 resolved an ambiguity surfaced while reviewing an RFC with th
 
 The maintainer decided that a request to review a named durable artifact carries authority to record that review on that artifact's own review channel. The authority is deliberately narrow — it comes from the request naming the artifact rather than from the inferred role, it covers recording alone, and an explicit read-only boundary still overrides it.
 
+## v0.4.0 — decision, evidence, and runtime semantics
+
+The v0.4.0 revision added semantics around the existing five roles rather than adding roles: decision authority as an axis separate from mutation permission, immutable mission anchors, claim maturity (`ASSERTED`, `INSPECTED`, `EXECUTED`, `VERIFIED`), assurance profiles, falsifiable verification contracts, bounded iterative review, and a separately versioned runtime-adapter contract that fails closed on safety-bearing fields.
+
+Prior art consulted for the runtime and bounded-review semantics is recorded with source pins in `references/prior-art.md`. Where a public source exposes no immutable revision, that limitation is recorded rather than concealed.
+
+Two review passes shaped the released form:
+
+1. an independent review of the executable surface found that the finding-snapshot check was satisfied by the handoff template's own table header, so a table with empty snapshot cells validated clean. The check was replaced with structural table parsing, and the v0.4 vocabularies were extended to handoff sections, which had been unvalidated.
+
+2. a spec-coherence review found that the pass execution status reused `EXECUTED`, already a claim-maturity state, in records that carry both fields. The pass axis was renamed to `RAN | FAILED | SKIPPED`. The same pass consolidated four partial statements of the finding lifecycle into one owned by `references/evidence-protocol.md`, which now also disambiguates `BLOCKED` as both a finding state and a cycle termination reason.
+
+Both passes are recorded on the pull requests that introduced them; neither agent's summary is treated as evidence independent of the diffs and tests it cites.
+
 ## Agent attribution convention
 
 Agent Relay supports compact provenance footers for substantive durable agent-generated records.

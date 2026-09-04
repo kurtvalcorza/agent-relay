@@ -3,7 +3,8 @@
 
 Uses only the Python standard library. It does not interpret correctness,
 permissions, or whether a role route is semantically appropriate; it checks
-that handoff, review, and agent-pass records contain their minimum fields.
+that handoff, review, and agent-pass records contain their minimum fields and
+that optional safety-bearing metadata is structurally explicit when present.
 """
 
 from __future__ import annotations
@@ -14,7 +15,8 @@ import re
 import sys
 
 # Preserve the v0.2 handoff minimum so previously valid handoffs remain valid.
-# v0.3 templates add Review lenses and Provenance as recommended transport fields.
+# Later templates add review/authority/evidence fields as recommended transport
+# metadata without invalidating older durable handoffs.
 HANDOFF_REQUIRED_HEADINGS = (
     "Mission",
     "Current role",
@@ -46,6 +48,8 @@ REVIEW_REQUIRED_HEADINGS = (
     "Provenance",
 )
 
+# Keep the v0.3 pass minimum for backward compatibility. v0.4 safety-bearing
+# fields are validated when present rather than made retroactively mandatory.
 PASS_REQUIRED_PREFIXES = (
     "Agent pass:",
     "Role:",
@@ -74,18 +78,46 @@ _TITLE_KIND = {
 }
 
 _PLACEHOLDER_RE = re.compile(r"<[^>\n]+>")
-
-
 _FENCE_RE = re.compile(r"^\s*(?P<marker>`{3,}|~{3,})\s*(?P<info>\S*)")
+
+MISSION_MODES = {
+    "build",
+    "fix",
+    "test",
+    "orchestrate",
+    "operate",
+    "understand",
+    "plan",
+    "analyze",
+    "communicate",
+    "n/a",
+}
+ASSURANCE_PROFILES = {"exploratory", "standard", "consequential", "n/a"}
+EXECUTION_STATUSES = {"ran", "failed", "skipped", "n/a"}
+TERMINATION_REASONS = {
+    "no_new_findings",
+    "bound_exhausted",
+    "blocked",
+    "cancelled",
+    "n/a",
+}
+CLAIM_MATURITIES = {"ASSERTED", "INSPECTED", "EXECUTED", "VERIFIED"}
+# Owned by references/evidence-protocol.md.
+FINDING_STATES = {"open", "fixed", "disproved", "deferred", "blocked"}
+
+_TABLE_DELIM_RE = re.compile(r"^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$")
+_UNESCAPED_PIPE_RE = re.compile(r"(?<!\\)\|")
+_NO_FINDINGS_RE = re.compile(
+    r"^[-*+\s]*(none|n/?a|no open findings)[.\s]*$", re.IGNORECASE
+)
+# A maturity declaration occupies the value position immediately before an
+# optional evidence locator. Uppercase words elsewhere (HTTP, JSON, etc.) are
+# ordinary claim text and must not be mistaken for enum values.
+_MATURITY_DECL_RE = re.compile(r":\s*([A-Z][A-Z_]*)\s*(?=@|$)")
 
 
 def _outside_fences(text: str) -> list[str]:
-    """Return the record's lines with fenced blocks blanked out.
-
-    Markdown inside a fence is an example or a pasted template, never the
-    record's own structure, so it must not satisfy a required heading.
-    Blank lines replace fenced content to keep line positions stable.
-    """
+    """Return the record's lines with fenced blocks blanked out."""
 
     lines: list[str] = []
     open_marker: str | None = None
@@ -98,8 +130,6 @@ def _outside_fences(text: str) -> list[str]:
                 continue
             lines.append(line)
             continue
-        # Inside a fence: only a same-character, at-least-as-long, bare
-        # marker closes it.
         if (
             match
             and match.group("marker")[0] == open_marker[0]
@@ -132,15 +162,18 @@ _BOUNDARY_SECTION = {
 }
 
 
-def _section_body(text: str, heading: str) -> str:
+def _section_body(text: str, heading: str, *, strip_fences: bool = False) -> str:
     """Return the body under `heading`, up to the next same-or-higher heading.
 
-    Sub-headings are kept, because the handoff template nests the boundary
-    statement under `### Strictly read-only / forbidden`.
+    Sub-headings are retained because templates use them inside boundary
+    sections. When ``strip_fences`` is true, fenced examples are blanked so
+    example structure cannot satisfy the durable record's own requirements.
     """
 
     lines = text.splitlines()
-    marks = _outside_fences(text)  # same length; fenced lines blanked
+    marks = _outside_fences(text)
+    if strip_fences:
+        lines = marks
     start = None
     level = 0
     for index, mark in enumerate(marks):
@@ -171,6 +204,49 @@ def _prefixes_present(text: str, prefixes: tuple[str, ...]) -> int:
     )
 
 
+def _line_value(text: str, prefix: str) -> str | None:
+    for line in _outside_fences(text):
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            return stripped[len(prefix):].strip()
+    return None
+
+
+def _section_field_value(text: str, heading: str, prefix: str) -> str | None:
+    """Read a ``- Key: value`` field inside a Markdown section."""
+
+    for line in _section_body(text, heading, strip_fences=True).splitlines():
+        stripped = line.strip().lstrip("-*+ ").strip()
+        if stripped.startswith(prefix):
+            return stripped[len(prefix):].strip()
+    return None
+
+
+def _block_entries(text: str, prefix: str) -> list[str]:
+    """Return an inline value and following bullet entries for a pass field."""
+
+    lines = _outside_fences(text)
+    entries: list[str] = []
+    for index, line in enumerate(lines):
+        if not line.strip().startswith(prefix):
+            continue
+        inline = line.strip()[len(prefix):].strip()
+        if inline:
+            entries.append(inline)
+        for following in lines[index + 1:]:
+            if not following.strip():
+                break
+            if not following.lstrip().startswith(("-", "*", "+")):
+                break
+            entries.append(following)
+        break
+    return entries
+
+
+def _claim_entries(text: str) -> list[str]:
+    return _block_entries(text, "Claims / evidence maturity:")
+
+
 def _detect_kind(text: str) -> str:
     """Detect record kind from title first, then from structural fit."""
 
@@ -190,11 +266,255 @@ def _detect_kind(text: str) -> str:
 
     best_kind, best_score = max(scores.items(), key=lambda item: item[1])
     second_score = sorted(scores.values(), reverse=True)[1]
-
     if best_score >= 0.5 and best_score - second_score >= 0.15:
         return best_kind
-
     return "unknown"
+
+
+def _validate_enum_field(
+    text: str,
+    prefix: str,
+    allowed: set[str],
+    errors: list[str],
+) -> None:
+    value = _line_value(text, prefix)
+    if value is None:
+        return
+    normalized = value.lower().replace("-", "_")
+    if normalized not in allowed:
+        errors.append(f"invalid {prefix.rstrip(':').lower()}: {value}")
+
+
+def _validate_section_field(
+    text: str,
+    section: str,
+    prefix: str,
+    allowed: set[str],
+    errors: list[str],
+) -> None:
+    value = _section_field_value(text, section, prefix)
+    if value is None:
+        return
+    normalized = value.lower().replace("-", "_")
+    if normalized not in allowed:
+        errors.append(f"invalid {prefix.rstrip(':').lower()}: {value}")
+
+
+def _validate_enum_section(
+    text: str,
+    heading: str,
+    allowed: set[str],
+    errors: list[str],
+) -> None:
+    body = _section_body(text, heading).strip()
+    if not body:
+        return
+    value = body.splitlines()[0].strip()
+    if not value:
+        return
+    normalized = value.lower().replace("-", "_")
+    if normalized not in allowed:
+        errors.append(f"invalid {heading.lower()}: {value}")
+
+
+def _table_cells(row: str) -> list[str]:
+    """Split one GFM table row without splitting escaped pipes."""
+
+    stripped = row.strip()
+    if stripped.startswith("|"):
+        stripped = stripped[1:]
+    if stripped.endswith("|") and not stripped.endswith("\\|"):
+        stripped = stripped[:-1]
+    return [
+        cell.strip().replace("\\|", "|")
+        for cell in _UNESCAPED_PIPE_RE.split(stripped)
+    ]
+
+
+def _snapshot_column(header: list[str]) -> tuple[int | None, str | None]:
+    """Locate the column carrying each finding's observation snapshot."""
+
+    lowered = [name.lower() for name in header]
+    canonical = [
+        position
+        for position, name in enumerate(lowered)
+        if "snapshot" in name and ("observation" in name or "reviewed" in name)
+    ]
+    if canonical:
+        return canonical[0], None
+
+    snapshots = [p for p, name in enumerate(lowered) if "snapshot" in name]
+    if not snapshots:
+        return None, "open finding table must preserve an observation/reviewed snapshot"
+    if len(snapshots) > 1:
+        return None, (
+            "open finding table has several snapshot columns; name the canonical "
+            "observation/reviewed snapshot column"
+        )
+    return snapshots[0], None
+
+
+def _finding_table_errors(section: str) -> list[str]:
+    """Validate the one contiguous finding table and its per-finding metadata.
+
+    Free-prose findings are refused because they cannot carry mechanically
+    enforceable snapshot/state metadata. Explanatory prose after a completed
+    table is allowed, but additional bullet findings after the table are not.
+    """
+
+    lines = section.splitlines()
+    header_index = None
+    delimiter_index = None
+    for index in range(1, len(lines)):
+        if _TABLE_DELIM_RE.match(lines[index]) and "|" in lines[index]:
+            if "|" in lines[index - 1]:
+                header_index = index - 1
+                delimiter_index = index
+                break
+
+    if header_index is None or delimiter_index is None:
+        if all(not line.strip() or _NO_FINDINGS_RE.match(line) for line in lines):
+            return []
+        return [
+            "open findings must use the finding table so each row records its "
+            "observation/reviewed snapshot (or say `None.`)"
+        ]
+
+    header = _table_cells(lines[header_index])
+    snapshot_column, error = _snapshot_column(header)
+    if error:
+        return [error]
+    assert snapshot_column is not None
+
+    state_column = next(
+        (position for position, name in enumerate(header) if name.strip().lower() == "state"),
+        None,
+    )
+
+    data_rows: list[str] = []
+    table_end = delimiter_index + 1
+    for index in range(delimiter_index + 1, len(lines)):
+        row = lines[index]
+        if not row.strip():
+            table_end = index
+            break
+        if "|" not in row or _TABLE_DELIM_RE.match(row):
+            table_end = index
+            break
+        data_rows.append(row)
+        table_end = index + 1
+
+    errors: list[str] = []
+    missing: list[str] = []
+    stateless: list[str] = []
+    invalid: list[str] = []
+
+    anonymous = 0
+    for row in data_rows:
+        cells = _table_cells(row)
+        if not cells or not cells[0]:
+            anonymous += 1
+        name = cells[0] if cells and cells[0] else "(unnamed)"
+        if snapshot_column >= len(cells) or not cells[snapshot_column]:
+            missing.append(name)
+        if state_column is not None:
+            value = cells[state_column] if state_column < len(cells) else ""
+            normalized = value.strip().lower()
+            if not normalized:
+                stateless.append(name)
+            elif normalized not in FINDING_STATES:
+                invalid.append(f"{name} ({value})")
+
+    if not data_rows:
+        errors.append(
+            "open findings table has no finding rows; add each finding as a row "
+            "or say `None.`"
+        )
+    if anonymous:
+        errors.append(
+            f"open finding rows have no identifier: {anonymous} row(s) with a blank "
+            "first cell; each finding needs a stable ID to be carried across snapshots"
+        )
+    if missing:
+        errors.append(
+            "open finding rows are missing their observation/reviewed snapshot: "
+            + ", ".join(missing)
+        )
+    if state_column is None:
+        errors.append("open finding table must carry a finding State column")
+    if stateless:
+        errors.append(
+            "open finding rows have a blank finding state: " + ", ".join(stateless)
+        )
+    if invalid:
+        errors.append(
+            "open finding rows declare an unrecognized finding state: "
+            + ", ".join(invalid)
+        )
+
+    # Once the table ends, ordinary explanatory prose is fine. A later bullet,
+    # though, would be an unenforced second finding representation and is
+    # therefore refused rather than guessed at.
+    for line in lines[table_end:]:
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(("-", "*", "+")) and not _NO_FINDINGS_RE.match(stripped):
+            errors.append(
+                "open findings after the finding table must not use prose/bullets; "
+                "add each finding as a table row"
+            )
+            break
+
+    return errors
+
+
+def _claim_maturity_errors(entries: list[str]) -> list[str]:
+    """Reject only explicit maturity declarations outside the closed vocabulary."""
+
+    errors: list[str] = []
+    for entry in entries:
+        text = entry.strip().lstrip("-*+ ").strip()
+        if not text or _NO_FINDINGS_RE.match(entry):
+            continue
+        match = _MATURITY_DECL_RE.search(text)
+        if not match:
+            continue
+        declared = match.group(1)
+        if declared not in CLAIM_MATURITIES:
+            errors.append(
+                f"claim declares an unrecognized maturity {declared}: {text}"
+            )
+    return errors
+
+
+def _pass_cycle_continuity_errors(text: str) -> list[str]:
+    """Require durable finding continuity only for actual v0.4 cycle records."""
+
+    cycle_id = _line_value(text, "Cycle ID:")
+    if not cycle_id or cycle_id.lower() in {"n/a", "na"}:
+        return []
+
+    findings_value = _line_value(text, "Findings:")
+    try:
+        findings = int(findings_value) if findings_value is not None else 0
+    except ValueError:
+        return []
+    if findings <= 0:
+        return []
+
+    ledger = _line_value(text, "Finding ledger:")
+    continuity = _block_entries(text, "Finding continuity:")
+    ledger_present = bool(ledger and ledger.lower() not in {"n/a", "na", "none"})
+    continuity_present = any(
+        entry.strip().lstrip("-*+ ").strip() and not _NO_FINDINGS_RE.match(entry)
+        for entry in continuity
+    )
+    if ledger_present or continuity_present:
+        return []
+    return [
+        "cycle pass with findings must carry per-finding continuity or an immutable Finding ledger"
+    ]
 
 
 def validate(text: str, *, kind: str = "auto") -> list[str]:
@@ -222,16 +542,82 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
                 errors.append(f"missing field: {prefix}")
 
     if selected_kind in {"handoff", "review"}:
-        # Scoped to the boundary section: unrelated prose elsewhere (an
-        # evidence note mentioning a "forbidden API", say) must not satisfy
-        # the record's one safety field.
-        lowered = _section_body(
-            text, _BOUNDARY_SECTION[selected_kind]
-        ).lower()
+        lowered = _section_body(text, _BOUNDARY_SECTION[selected_kind]).lower()
         if "read-only" not in lowered and "forbidden" not in lowered:
             errors.append(
                 "mutation boundary is not explicit (no read-only/forbidden statement)"
             )
+
+    if selected_kind == "handoff":
+        open_findings = _section_body(
+            text, "Open findings", strip_fences=True
+        ).strip()
+        if not open_findings:
+            errors.append("open findings section must say `None.` or carry findings")
+        errors.extend(_finding_table_errors(open_findings))
+        errors.extend(
+            _claim_maturity_errors(
+                _section_body(
+                    text,
+                    "Completed but not independently verified",
+                    strip_fences=True,
+                ).splitlines()
+            )
+        )
+        _validate_enum_section(text, "Mission mode", MISSION_MODES, errors)
+        _validate_enum_section(text, "Assurance profile", ASSURANCE_PROFILES, errors)
+
+    if selected_kind == "review":
+        # REVIEW.md carries these fields as bullets inside Reviewer profile.
+        _validate_section_field(
+            text, "Reviewer profile", "Mission mode:", MISSION_MODES, errors
+        )
+        _validate_section_field(
+            text,
+            "Reviewer profile",
+            "Assurance profile:",
+            ASSURANCE_PROFILES,
+            errors,
+        )
+
+    if selected_kind == "pass":
+        boundary = _line_value(text, "Mutation boundary:")
+        if boundary is not None:
+            lowered = boundary.lower()
+            if (
+                "read-only" not in lowered
+                and "forbidden" not in lowered
+                and "allowed" not in lowered
+            ):
+                errors.append(
+                    "pass mutation boundary is not explicit (no allowed/read-only/forbidden statement)"
+                )
+
+        errors.extend(_claim_maturity_errors(_claim_entries(text)))
+        _validate_enum_field(text, "Mission mode:", MISSION_MODES, errors)
+        _validate_enum_field(text, "Assurance profile:", ASSURANCE_PROFILES, errors)
+        _validate_enum_field(text, "Execution status:", EXECUTION_STATUSES, errors)
+        _validate_enum_field(text, "Termination reason:", TERMINATION_REASONS, errors)
+
+        execution = _line_value(text, "Execution status:")
+        termination = _line_value(text, "Termination reason:")
+        if termination and termination.lower().replace("-", "_") == "no_new_findings":
+            if not execution or execution.lower().replace("-", "_") != "ran":
+                errors.append(
+                    "termination reason NO_NEW_FINDINGS requires execution status RAN"
+                )
+
+        # A termination reason is a cycle-level outcome, so it needs the cycle
+        # identity it claims a result for; otherwise the record is unattributable
+        # to the planned passes or bounds it reports on.
+        if termination and termination.lower().replace("-", "_") not in {"n/a", "na"}:
+            cycle_id = _line_value(text, "Cycle ID:")
+            if not cycle_id or cycle_id.lower() in {"n/a", "na"}:
+                errors.append(
+                    f"termination reason {termination} requires a Cycle ID"
+                )
+
+        errors.extend(_pass_cycle_continuity_errors(text))
 
     if _PLACEHOLDER_RE.search(text):
         errors.append("template placeholders appear to remain unfilled")
