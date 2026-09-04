@@ -27,3 +27,9 @@ jobs:
       # `python -m pytest` (not bare `pytest`) is required: the tests import
       # `scripts.*`, and only the -m form puts the repository root on sys.path.
       - run: python -m pytest
+      # Keep stdlib discovery green because Agent Relay advertises it as a
+      # dependency-free verification path.
+      - run: python -m unittest discover -s tests -t . -v
+      # Regression for PR #12: the main guard must remain below every v0.4 test
+      # class so direct module execution cannot silently skip later tests.
+      - run: python -m tests.test_protocol_v04
