@@ -3,7 +3,8 @@
 
 Uses only the Python standard library. It does not interpret correctness,
 permissions, or whether a role route is semantically appropriate; it checks
-that handoff, review, and agent-pass records contain their minimum fields.
+that handoff, review, and agent-pass records contain their minimum fields and
+that optional safety-bearing metadata is structurally explicit when present.
 """
 
 from __future__ import annotations
@@ -14,7 +15,8 @@ import re
 import sys
 
 # Preserve the v0.2 handoff minimum so previously valid handoffs remain valid.
-# v0.3 templates add Review lenses and Provenance as recommended transport fields.
+# Later templates add review/authority/evidence fields as recommended transport
+# metadata without invalidating older durable handoffs.
 HANDOFF_REQUIRED_HEADINGS = (
     "Mission",
     "Current role",
@@ -46,6 +48,8 @@ REVIEW_REQUIRED_HEADINGS = (
     "Provenance",
 )
 
+# Keep the v0.3 pass minimum for backward compatibility. v0.4 safety-bearing
+# fields are validated when present rather than made retroactively mandatory.
 PASS_REQUIRED_PREFIXES = (
     "Agent pass:",
     "Role:",
@@ -74,9 +78,29 @@ _TITLE_KIND = {
 }
 
 _PLACEHOLDER_RE = re.compile(r"<[^>\n]+>")
-
-
 _FENCE_RE = re.compile(r"^\s*(?P<marker>`{3,}|~{3,})\s*(?P<info>\S*)")
+
+MISSION_MODES = {
+    "build",
+    "fix",
+    "test",
+    "orchestrate",
+    "operate",
+    "understand",
+    "plan",
+    "analyze",
+    "communicate",
+    "n/a",
+}
+ASSURANCE_PROFILES = {"exploratory", "standard", "consequential", "n/a"}
+EXECUTION_STATUSES = {"executed", "failed", "skipped", "n/a"}
+TERMINATION_REASONS = {
+    "no_new_findings",
+    "bound_exhausted",
+    "blocked",
+    "cancelled",
+    "n/a",
+}
 
 
 def _outside_fences(text: str) -> list[str]:
@@ -98,8 +122,6 @@ def _outside_fences(text: str) -> list[str]:
                 continue
             lines.append(line)
             continue
-        # Inside a fence: only a same-character, at-least-as-long, bare
-        # marker closes it.
         if (
             match
             and match.group("marker")[0] == open_marker[0]
@@ -133,14 +155,10 @@ _BOUNDARY_SECTION = {
 
 
 def _section_body(text: str, heading: str) -> str:
-    """Return the body under `heading`, up to the next same-or-higher heading.
-
-    Sub-headings are kept, because the handoff template nests the boundary
-    statement under `### Strictly read-only / forbidden`.
-    """
+    """Return the body under `heading`, up to the next same-or-higher heading."""
 
     lines = text.splitlines()
-    marks = _outside_fences(text)  # same length; fenced lines blanked
+    marks = _outside_fences(text)
     start = None
     level = 0
     for index, mark in enumerate(marks):
@@ -171,6 +189,14 @@ def _prefixes_present(text: str, prefixes: tuple[str, ...]) -> int:
     )
 
 
+def _line_value(text: str, prefix: str) -> str | None:
+    for line in _outside_fences(text):
+        stripped = line.strip()
+        if stripped.startswith(prefix):
+            return stripped[len(prefix):].strip()
+    return None
+
+
 def _detect_kind(text: str) -> str:
     """Detect record kind from title first, then from structural fit."""
 
@@ -195,6 +221,22 @@ def _detect_kind(text: str) -> str:
         return best_kind
 
     return "unknown"
+
+
+def _validate_enum_field(
+    text: str,
+    prefix: str,
+    allowed: set[str],
+    errors: list[str],
+) -> None:
+    value = _line_value(text, prefix)
+    if value is None:
+        return
+    normalized = value.lower().replace("-", "_")
+    if normalized not in allowed:
+        errors.append(
+            f"invalid {prefix.rstrip(':').lower()}: {value}"
+        )
 
 
 def validate(text: str, *, kind: str = "auto") -> list[str]:
@@ -222,9 +264,6 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
                 errors.append(f"missing field: {prefix}")
 
     if selected_kind in {"handoff", "review"}:
-        # Scoped to the boundary section: unrelated prose elsewhere (an
-        # evidence note mentioning a "forbidden API", say) must not satisfy
-        # the record's one safety field.
         lowered = _section_body(
             text, _BOUNDARY_SECTION[selected_kind]
         ).lower()
@@ -232,6 +271,27 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
             errors.append(
                 "mutation boundary is not explicit (no read-only/forbidden statement)"
             )
+
+    if selected_kind == "handoff":
+        open_findings = _section_body(text, "Open findings").strip()
+        if not open_findings:
+            errors.append("open findings section must say `None.` or carry findings")
+        if "|" in open_findings and "snapshot" not in open_findings.lower():
+            errors.append("open finding table must preserve an observation/reviewed snapshot")
+
+    if selected_kind == "pass":
+        boundary = _line_value(text, "Mutation boundary:")
+        if boundary is not None:
+            lowered = boundary.lower()
+            if "read-only" not in lowered and "forbidden" not in lowered and "allowed" not in lowered:
+                errors.append(
+                    "pass mutation boundary is not explicit (no allowed/read-only/forbidden statement)"
+                )
+
+        _validate_enum_field(text, "Mission mode:", MISSION_MODES, errors)
+        _validate_enum_field(text, "Assurance profile:", ASSURANCE_PROFILES, errors)
+        _validate_enum_field(text, "Execution status:", EXECUTION_STATUSES, errors)
+        _validate_enum_field(text, "Termination reason:", TERMINATION_REASONS, errors)
 
     if _PLACEHOLDER_RE.search(text):
         errors.append("template placeholders appear to remain unfilled")
