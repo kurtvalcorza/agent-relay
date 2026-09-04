@@ -13,7 +13,7 @@ Mutation boundary: <allowed + read-only/forbidden summary>
 Reviewed/modified snapshot: <immutable-id>
 Previous snapshot: <immutable-id or N/A>
 Environment: <if executable work occurred, otherwise N/A>
-Execution status: <EXECUTED|FAILED|SKIPPED|N/A>
+Execution status: <RAN|FAILED|SKIPPED|N/A>
 
 Cycle ID: <id or N/A>
 Cycle pass: <number or N/A>
@@ -35,6 +35,12 @@ Fixed: <count>
 Disproved: <count>
 Deferred: <count>
 Blocked: <count>
+Finding ledger: <immutable ledger reference or N/A>
+
+Finding continuity:
+- <finding-id>: observation=<immutable-id>; state=<OPEN|FIXED|DISPROVED|DEFERRED|BLOCKED>; evidence=<environment-qualified evidence>; owner=<owning layer>
+
+For a bounded review cycle with one or more findings, preserve per-finding continuity here or point `Finding ledger` at an immutable durable ledger. Aggregate counts alone are not sufficient to distinguish new, persistent, or carried findings across snapshots.
 
 Executable/inspectable evidence:
 - <claim + evidence + environment>

@@ -1,7 +1,11 @@
+import pathlib
+import re
 import unittest
 
 from scripts.validate_handoff import validate
 
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
 
 BASE_PASS = """# Agent Pass Record
 
@@ -36,6 +40,44 @@ Provenance:
 """
 
 
+def make_handoff(findings, *, mode=None, assurance=None):
+    optional = ""
+    if mode is not None:
+        optional += f"## Mission mode\n{mode}\n"
+    if assurance is not None:
+        optional += f"## Assurance profile\n{assurance}\n"
+    return f"""# Agent Relay Handoff
+
+## Mission
+Continue.
+{optional}## Current role
+Builder
+## Role source
+Explicit
+## Recommended role sequence
+Builder -> Verifier
+## Authoritative substrate
+Repository
+## Current immutable snapshot
+abc123
+## Mutation permissions
+### Strictly read-only / forbidden
+specs
+## Completed work
+Done.
+## Verified evidence
+None.
+## Open findings
+{findings}
+## Ordered next actions
+1. Verify.
+## Verification checkpoint
+Verify.
+## Completion criteria
+Done.
+"""
+
+
 class V04PassMetadataTests(unittest.TestCase):
     def test_optional_v04_fields_validate_when_explicit(self):
         text = BASE_PASS.replace(
@@ -46,7 +88,7 @@ Decision authority: implementation=builder; readiness=integrator
 Assurance profile: standard
 Mutation boundary: allowed src/**; read-only specs/**
 Reviewed/modified snapshot: abc123
-Execution status: EXECUTED
+Execution status: RAN
 Termination reason: N/A""",
         )
         self.assertEqual(validate(text, kind="pass"), [])
@@ -79,45 +121,343 @@ Termination reason: N/A""",
 
 class ColdStartStructureTests(unittest.TestCase):
     def test_empty_open_findings_section_is_not_cold_start_ready(self):
-        handoff = """# Agent Relay Handoff
-
-## Mission
-Continue.
-## Current role
-Builder
-## Role source
-Explicit
-## Recommended role sequence
-Builder -> Verifier
-## Authoritative substrate
-Repository
-## Current immutable snapshot
-abc123
-## Mutation permissions
-Strictly read-only / forbidden: specs
-## Completed work
-Done.
-## Verified evidence
-None.
-## Open findings
-
-## Ordered next actions
-1. Verify.
-## Verification checkpoint
-Verify.
-## Completion criteria
-Done.
-"""
         self.assertIn(
             "open findings section must say `None.` or carry findings",
-            validate(handoff, kind="handoff"),
+            validate(make_handoff(""), kind="handoff"),
         )
 
     def test_finding_table_must_preserve_snapshot_column(self):
-        handoff = """# Agent Relay Handoff
+        findings = "| Finding | State |\n|---|---|\n| F1 | OPEN |"
+        self.assertIn(
+            "open finding table must preserve an observation/reviewed snapshot",
+            validate(make_handoff(findings), kind="handoff"),
+        )
+
+
+class RegressionForReviewFindings(unittest.TestCase):
+    """Regressions for findings raised while reviewing the v0.4 head."""
+
+    def _handoff(self, findings, mode="build", assurance="standard"):
+        return make_handoff(findings, mode=mode, assurance=assurance)
+
+    def test_template_shaped_table_with_empty_snapshot_cells_is_rejected(self):
+        findings = (
+            "| Finding | Severity | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            "| F1 | P1 |  | OPEN |"
+        )
+        self.assertIn(
+            "open finding rows are missing their observation/reviewed snapshot: F1",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_prose_saying_no_snapshot_recorded_does_not_satisfy_the_check(self):
+        findings = (
+            "| Finding | State |\n"
+            "|---|---|\n"
+            "| F1 | OPEN |\n\n"
+            "No snapshot was recorded."
+        )
+        self.assertIn(
+            "open finding table must preserve an observation/reviewed snapshot",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_filled_snapshot_cells_are_accepted(self):
+        findings = (
+            "| Finding | Severity | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            "| F1 | P1 | abc123 | OPEN |\n"
+            "| F2 | P2 | def456 | BLOCKED |"
+        )
+        self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
+
+    def test_a_pipe_in_evidence_does_not_break_table_parsing(self):
+        findings = (
+            "| Finding | Evidence | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            r"| F1 | `grep -c OPEN \| wc -l` | abc123 | OPEN |"
+        )
+        self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
+
+    def test_prose_findings_are_refused_rather_than_parsed(self):
+        for findings in (
+            "F1: repro with `grep -c OPEN handoff.md | wc -l` at rev abc123.",
+            "- F1: parser can drop data",
+        ):
+            with self.subTest(findings=findings):
+                self.assertIn(
+                    "open findings must use the finding table so each row records "
+                    "its observation/reviewed snapshot (or say `None.`)",
+                    validate(self._handoff(findings), kind="handoff"),
+                )
+
+    def test_no_findings_declarations_still_validate(self):
+        for findings in ("None.", "- none", "N/A"):
+            with self.subTest(findings=findings):
+                self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
+
+    def test_handoff_rejects_invalid_mission_mode(self):
+        errors = validate(self._handoff("None.", mode="teleport"), kind="handoff")
+        self.assertIn("invalid mission mode: teleport", errors)
+
+    def test_handoff_rejects_invalid_assurance_profile(self):
+        errors = validate(self._handoff("None.", assurance="banana"), kind="handoff")
+        self.assertIn("invalid assurance profile: banana", errors)
+
+    def test_handoff_accepts_declared_vocabulary(self):
+        self.assertEqual(
+            [],
+            validate(
+                self._handoff("None.", mode="understand", assurance="consequential"),
+                kind="handoff",
+            ),
+        )
+
+    def test_source_file_ends_with_a_newline(self):
+        source = ROOT / "scripts" / "validate_handoff.py"
+        self.assertTrue(source.read_text().endswith("\n"))
+
+
+class SpecCoherenceTests(unittest.TestCase):
+    """Regressions for the spec-coherence pass over SKILL.md and references/."""
+
+    ROOT = ROOT
+
+    def _pass_with(self, field):
+        return BASE_PASS.replace(
+            "Reviewed/modified snapshot: abc123",
+            field + "\nReviewed/modified snapshot: abc123",
+        )
+
+    def test_pass_status_axis_accepts_ran(self):
+        self.assertEqual([], validate(self._pass_with("Execution status: RAN"), kind="pass"))
+
+    def test_pass_status_axis_rejects_executed(self):
+        self.assertIn(
+            "invalid execution status: EXECUTED",
+            validate(self._pass_with("Execution status: EXECUTED"), kind="pass"),
+        )
+
+    def test_claim_maturity_still_uses_executed(self):
+        text = (self.ROOT / "assets" / "AGENT-PASS.md").read_text()
+        self.assertIn("<ASSERTED|INSPECTED|EXECUTED|VERIFIED>", text)
+        self.assertIn("Execution status: <RAN|FAILED|SKIPPED|N/A>", text)
+
+    def test_skill_canonical_block_can_express_its_own_requirements(self):
+        block = (self.ROOT / "SKILL.md").read_text()
+        block = re.search(r"```text\nAgent pass:.*?\n```", block, re.S).group(0)
+        for field in (
+            "Mutation surface/transition:",
+            "Verification contracts:",
+            "Environment:",
+            "Previous snapshot:",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, block)
+
+    def test_finding_lifecycle_has_exactly_one_owner(self):
+        owner = self.ROOT / "references" / "evidence-protocol.md"
+        self.assertIn("OPEN -> FIXED | DISPROVED | DEFERRED | BLOCKED", owner.read_text())
+        for name in ("iterative-review.md", "stagnation-escalation.md"):
+            with self.subTest(file=name):
+                text = (self.ROOT / "references" / name).read_text()
+                self.assertNotIn("authoritative finding lifecycle remains", text)
+                self.assertIn("evidence-protocol.md", text)
+
+    def test_every_reference_file_is_reachable(self):
+        docs = list(self.ROOT.glob("*.md")) + list(self.ROOT.glob("*/*.md"))
+        corpus = "\n".join(d.read_text() for d in docs)
+        for target in (self.ROOT / "references").glob("*.md"):
+            with self.subTest(file=target.name):
+                inbound = corpus.count(target.name) - target.read_text().count(target.name)
+                self.assertGreater(inbound, 0, f"{target.name} has no inbound link")
+
+    def test_review_template_carries_v04_reviewer_fields(self):
+        text = (self.ROOT / "assets" / "REVIEW.md").read_text()
+        for field in (
+            "Mission anchor:",
+            "Assurance profile:",
+            "Verification contracts reviewed:",
+        ):
+            with self.subTest(field=field):
+                self.assertIn(field, text)
+
+
+class ReviewerBypassRegressions(unittest.TestCase):
+    """The reviewer's reproductions against 693bde77."""
+
+    def _handoff(self, findings):
+        return make_handoff(findings)
+
+    def test_w1_single_hyphen_delimiter_row_is_a_table(self):
+        findings = "| Finding | State |\n| - | - |\n| F1 | OPEN |"
+        self.assertIn(
+            "open finding table must preserve an observation/reviewed snapshot",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_w4_escaped_pipe_does_not_shift_the_snapshot_column(self):
+        findings = (
+            "| Finding | Evidence | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            r"| F1 | a \| b |  | OPEN |"
+        )
+        self.assertIn(
+            "open finding rows are missing their observation/reviewed snapshot: F1",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_w5_a_filled_unrelated_snapshot_column_is_not_a_substitute(self):
+        findings = (
+            "| Finding | Current snapshot | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|---|\n"
+            "| F1 | abc123 |  | OPEN |"
+        )
+        self.assertIn(
+            "open finding rows are missing their observation/reviewed snapshot: F1",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_w5_ambiguous_snapshot_columns_are_refused(self):
+        findings = (
+            "| Finding | Base snapshot | Head snapshot | State |\n"
+            "|---|---|---|---|\n"
+            "| F1 | abc123 | def456 | OPEN |"
+        )
+        self.assertIn(
+            "open finding table has several snapshot columns; name the canonical "
+            "observation/reviewed snapshot column",
+            validate(self._handoff(findings), kind="handoff"),
+        )
+
+    def test_w6_carried_prose_finding_is_refused(self):
+        self.assertIn(
+            "open findings must use the finding table so each row records its "
+            "observation/reviewed snapshot (or say `None.`)",
+            validate(self._handoff("- F1: parser can drop data"), kind="handoff"),
+        )
+
+    def test_w3_every_unsnapshotted_row_is_named(self):
+        findings = (
+            "| Finding | Observation/reviewed snapshot | State |\n"
+            "|---|---|---|\n"
+            "| F1 |  | OPEN |\n"
+            "| F2 | abc123 | OPEN |\n"
+            "| F3 |  | OPEN |"
+        )
+        errors = validate(self._handoff(findings), kind="handoff")
+        self.assertIn(
+            "open finding rows are missing their observation/reviewed snapshot: F1, F3",
+            errors,
+        )
+
+    def test_fenced_example_table_is_not_read_as_record_data(self):
+        findings = "None.\n\n```markdown\n| Finding | State |\n|---|---|\n| F1 | OPEN |\n```"
+        self.assertEqual([], validate(self._handoff(findings), kind="handoff"))
+
+    def test_w2_unrecognized_claim_maturity_is_rejected(self):
+        text = BASE_PASS.replace(
+            "Reviewed/modified snapshot: abc123",
+            "Claims / evidence maturity: parser is correct: PROVEN @ abc123\n"
+            "Reviewed/modified snapshot: abc123",
+        )
+        errors = validate(text, kind="pass")
+        self.assertTrue(any("unrecognized maturity PROVEN" in e for e in errors), errors)
+
+    def test_w2_valid_claim_maturity_passes(self):
+        text = BASE_PASS.replace(
+            "Reviewed/modified snapshot: abc123",
+            "Claims / evidence maturity: parser is correct: EXECUTED @ abc123\n"
+            "Reviewed/modified snapshot: abc123",
+        )
+        self.assertEqual([], validate(text, kind="pass"))
+
+
+class FindingStateRegressions(unittest.TestCase):
+    """V-1: finding State is mandatory and belongs to the lifecycle vocabulary."""
+
+    def _handoff(self, rows, header="| Finding | Observation/reviewed snapshot | State |"):
+        findings = header + "\n|---|---|---|\n" + rows
+        return make_handoff(findings)
+
+    def test_blank_finding_state_is_rejected(self):
+        self.assertIn(
+            "open finding rows have a blank finding state: F1",
+            validate(self._handoff("| F1 | abc123 |  |"), kind="handoff"),
+        )
+
+    def test_unrecognized_finding_state_is_rejected(self):
+        self.assertIn(
+            "open finding rows declare an unrecognized finding state: F1 (LGTM)",
+            validate(self._handoff("| F1 | abc123 | LGTM |"), kind="handoff"),
+        )
+
+    def test_every_blank_state_row_is_named(self):
+        rows = "| F1 | abc123 |  |\n| F2 | def456 | OPEN |\n| F3 | ghi789 |  |"
+        self.assertIn(
+            "open finding rows have a blank finding state: F1, F3",
+            validate(self._handoff(rows), kind="handoff"),
+        )
+
+    def test_missing_state_column_is_rejected(self):
+        handoff = self._handoff(
+            "| F1 | abc123 | P1 |",
+            header="| Finding | Observation/reviewed snapshot | Severity |",
+        )
+        self.assertIn(
+            "open finding table must carry a finding State column",
+            validate(handoff, kind="handoff"),
+        )
+
+    def test_every_lifecycle_state_is_accepted(self):
+        for state in ("OPEN", "FIXED", "DISPROVED", "DEFERRED", "BLOCKED"):
+            with self.subTest(state=state):
+                self.assertEqual(
+                    [],
+                    validate(
+                        self._handoff(f"| F1 | abc123 | {state} |"),
+                        kind="handoff",
+                    ),
+                )
+
+    def test_template_style_alternatives_are_rejected(self):
+        self.assertIn(
+            "open finding rows declare an unrecognized finding state: F1 (OPEN/DEFERRED/BLOCKED)",
+            validate(
+                self._handoff("| F1 | abc123 | OPEN/DEFERRED/BLOCKED |"),
+                kind="handoff",
+            ),
+        )
+
+
+class ShippedTemplateIntegrity(unittest.TestCase):
+    """The shipped templates must parse under the rules they document."""
+
+    ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+    def test_handoff_finding_row_matches_its_header(self):
+        # An unescaped `|` inside a placeholder silently adds columns, which is
+        # how the State cell once came to read `<OPEN` against a 7-cell header.
+        from scripts.validate_handoff import _table_cells
+
+        lines = (self.ROOT / "assets" / "HANDOFF.md").read_text().splitlines()
+        index = next(i for i, l in enumerate(lines) if l.startswith("| Finding | Lens |"))
+        header = _table_cells(lines[index])
+        row = _table_cells(lines[index + 2])
+        self.assertEqual(len(header), len(row), f"header {header} vs row {row}")
+
+
+class CodexSecondRoundRegressions(unittest.TestCase):
+    """Codex findings on f8ad476, verified and fixed at the current head."""
+
+    HEADER = "| Finding | Observation/reviewed snapshot | State |\n|---|---|---|"
+
+    def _handoff(self, findings):
+        return f"""# Agent Relay Handoff
 
 ## Mission
-Continue.
+M.
 ## Current role
 Builder
 ## Role source
@@ -125,30 +465,98 @@ Explicit
 ## Recommended role sequence
 Builder -> Verifier
 ## Authoritative substrate
-Repository
+Repo
 ## Current immutable snapshot
 abc123
 ## Mutation permissions
-Strictly read-only / forbidden: specs
+### Strictly read-only / forbidden
+specs
 ## Completed work
-Done.
+D.
 ## Verified evidence
 None.
 ## Open findings
-| Finding | State |
-|---|---|
-| F1 | OPEN |
+{findings}
 ## Ordered next actions
-1. Verify.
+1. Go.
 ## Verification checkpoint
-Verify.
+V.
 ## Completion criteria
-Done.
+C.
 """
-        self.assertIn(
-            "open finding table must preserve an observation/reviewed snapshot",
-            validate(handoff, kind="handoff"),
+
+    def _pass(self, extra):
+        return BASE_PASS.replace(
+            "Reviewed/modified snapshot: abc123",
+            extra + "\nReviewed/modified snapshot: abc123",
         )
+
+    def test_header_only_findings_table_is_refused(self):
+        self.assertIn(
+            "open findings table has no finding rows; add each finding as a row "
+            "or say `None.`",
+            validate(self._handoff(self.HEADER), kind="handoff"),
+        )
+
+    def test_finding_row_without_an_identifier_is_refused(self):
+        errors = validate(
+            self._handoff(self.HEADER + "\n|  | abc123 | OPEN |"), kind="handoff"
+        )
+        self.assertTrue(
+            any("have no identifier" in e for e in errors), errors
+        )
+
+    def test_a_complete_row_still_validates(self):
+        self.assertEqual(
+            [],
+            validate(self._handoff(self.HEADER + "\n| F1 | abc123 | OPEN |"), kind="handoff"),
+        )
+
+    def test_sentinel_continuity_does_not_satisfy_the_cycle_rule(self):
+        self.assertIn(
+            "cycle pass with findings must carry per-finding continuity or an "
+            "immutable Finding ledger",
+            validate(
+                self._pass(
+                    "Cycle ID: c1\nFindings: 1\nFinding ledger: N/A\n"
+                    "Finding continuity:\n- none"
+                ),
+                kind="pass",
+            ),
+        )
+
+    def test_termination_reason_requires_a_cycle_id(self):
+        self.assertIn(
+            "termination reason NO_NEW_FINDINGS requires a Cycle ID",
+            validate(
+                self._pass("Execution status: RAN\nTermination reason: NO_NEW_FINDINGS"),
+                kind="pass",
+            ),
+        )
+
+    def test_termination_reason_with_a_cycle_id_validates(self):
+        self.assertEqual(
+            [],
+            validate(
+                self._pass(
+                    "Cycle ID: c1\nFindings: 0\nExecution status: RAN\n"
+                    "Termination reason: NO_NEW_FINDINGS"
+                ),
+                kind="pass",
+            ),
+        )
+
+    def test_skill_block_can_represent_a_cycle_pass(self):
+        import re
+
+        block = re.search(
+            r"```text\nAgent pass:.*?\n```",
+            (pathlib.Path(__file__).resolve().parents[1] / "SKILL.md").read_text(),
+            re.S,
+        ).group(0)
+        for field in ("Cycle ID:", "Finding ledger:", "Finding continuity:"):
+            with self.subTest(field=field):
+                self.assertIn(field, block)
 
 
 if __name__ == "__main__":

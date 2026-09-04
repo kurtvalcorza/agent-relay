@@ -290,12 +290,14 @@ A substantive handoff should be cold-start resumable: a fresh session with no co
 
 ## Finding lifecycle
 
-A finding closes only as:
+The lifecycle is `OPEN -> FIXED | DISPROVED | DEFERRED | BLOCKED`. A finding closes only as:
 
 - **FIXED** — reproduced, corrected, and relevant verification now passes.
 - **DISPROVED** — tested or inspected and the claimed failure condition is not present.
 - **DEFERRED** — valid work intentionally postponed; record owner/reason/revisit condition.
 - **BLOCKED** — cannot proceed because required evidence, permission, environment, dependency, or external state is unavailable.
+
+`DEFERRED` and `BLOCKED` are terminal dispositions that remain tracked, not permission to stop carrying the finding. [references/evidence-protocol.md](references/evidence-protocol.md) owns this vocabulary and disambiguates it from claim maturity, pass execution status, and cycle termination.
 
 A task may be implementation-complete while release-readiness remains BLOCKED.
 
@@ -331,7 +333,9 @@ Use [assets/HANDOFF.md](assets/HANDOFF.md).
 
 ## Agent pass record
 
-After a significant pass, leave a compact durable record when the substrate supports it. v0.4 permits optional mission/cycle/authority metadata while preserving the v0.3 minimum:
+After a significant pass, leave a compact durable record when the substrate supports it. v0.4 permits optional mission/cycle/authority metadata while preserving the v0.3 minimum.
+
+[assets/AGENT-PASS.md](assets/AGENT-PASS.md) is the canonical record; the block below is the common subset and omits the cycle-detail fields (`Cycle pass`, `Planned lens sequence`, `Cycle budget`, `Predecessor pass/checkpoint`, `Stagnation signal`). Three fields here are conditionally required rather than optional: a mutation-producing pass MUST record `Mutation surface/transition` (see **Bounded iterative review and runtime adapters**), executable work MUST record `Environment`, and a consequential requirement MUST record a `Verification contracts` entry or an explicit `verification: none — reason` (rule 13), a non-`N/A` `Termination reason` MUST carry the `Cycle ID` it reports on, and a cycle pass with findings MUST carry `Finding continuity` entries or an immutable `Finding ledger`.
 
 ```text
 Agent pass: <short-name>
@@ -344,11 +348,18 @@ Mission anchor: <immutable revision/digest or N/A>
 Decision authority: <summary/reference>
 Assurance profile: <exploratory|standard|consequential|N/A>
 Mutation boundary: <allowed + read-only/forbidden summary>
+Previous snapshot: <immutable-id or N/A>
 Reviewed/modified snapshot: <immutable-id>
-Execution status: <EXECUTED|FAILED|SKIPPED|N/A>
+Mutation surface/transition: <surface + from/to snapshots + pass/cycle attribution, or N/A>
+Environment: <if executable work occurred, otherwise N/A>
+Execution status: <RAN|FAILED|SKIPPED|N/A>
 Cycle ID: <id or N/A>
 Termination reason: <NO_NEW_FINDINGS|BOUND_EXHAUSTED|BLOCKED|CANCELLED|N/A>
+Finding ledger: <immutable ledger reference, or N/A>
+Finding continuity:
+- <finding id + observation snapshot + state + evidence + owner, or N/A>
 Claims / evidence maturity: <claim + state + snapshot/environment>
+Verification contracts: <claim/requirement -> falsifiable procedure/oracle, or `verification: none — reason`>
 Findings: <count>
 Fixed: <count>
 Disproved: <count>
@@ -397,7 +408,7 @@ Base percentages on remaining task/evidence surface, not lines of code or commit
 
 ## Tool and platform neutrality
 
-The core protocol must not depend on GitHub, Claude, ChatGPT, Codex, Gemini, Antigravity, or another named agent product. A repository/PR workflow is one substrate adapter.
+The core protocol must not depend on GitHub, Claude, ChatGPT, Codex, Gemini, Antigravity, or another named agent product. A repository/PR workflow is one substrate adapter. External systems whose ideas Agent Relay adapts are recorded, with their source pins, in [references/prior-art.md](references/prior-art.md); they are prior art, not dependencies or normative authority.
 
 The same protocol can coordinate documents, research, data analysis, experiment replication, infrastructure operations, model evaluation, incident response, and policy/compliance review.
 

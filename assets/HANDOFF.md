@@ -5,8 +5,8 @@
 
 ## Mission anchor
 - Locator: <durable artifact or N/A>
-- Immutable revision/digest: <immutable-id or digest>
-- Anchor gaps: <missing planning fields or none>
+- Immutable revision/digest: <immutable-id, digest, or N/A>
+- Anchor gaps: <missing planning fields, none, or N/A>
 
 ## Mission mode
 <build | fix | test | orchestrate | operate | understand | plan | analyze | communicate | N/A>
@@ -24,10 +24,14 @@
 <e.g. Executor -> Verifier -> Integrator>
 
 ## Decision authority
-- Mission/scope: <holder>
-- Architecture/acceptance: <holder>
-- Implementation/execution: <holder>
-- Evidence/readiness: <holder>
+- Mission: <holder>
+- Scope: <holder>
+- Architecture: <holder>
+- Acceptance: <holder>
+- Implementation: <holder>
+- Execution: <holder>
+- Evidence: <holder>
+- Readiness: <holder>
 
 ## Assurance profile
 <exploratory | standard | consequential | N/A>
@@ -64,7 +68,16 @@
 ## Open findings
 | Finding | Lens | Severity | Observation/reviewed snapshot | State | Evidence + environment | Owning layer |
 |---|---|---|---|---|---|---|
-| <id> | <lens> | <P1/P2/etc> | <immutable-id> | OPEN/BLOCKED/DEFERRED | <evidence> | <owner> |
+| <id> | <lens> | <P1/P2/etc> | <immutable-id> | <state> | <evidence> | <owner> |
+
+`<state>` is one of `OPEN`, `FIXED`, `DISPROVED`, `DEFERRED`, `BLOCKED`. Each row records one
+actual lifecycle state: do not leave alternatives such as `OPEN/DEFERRED/BLOCKED` in a filled
+State cell. Avoid unescaped `|` inside any cell — it starts a new column.
+
+`DEFERRED` and `BLOCKED` findings stay listed here until resolved or carried into a successor cycle; see [../references/evidence-protocol.md](../references/evidence-protocol.md).
+
+Record findings in the table above rather than as prose: free prose cannot be split into
+findings reliably, so a per-finding snapshot cannot be enforced there.
 
 If there are no open findings, write `None.` explicitly rather than leaving this section blank.
 

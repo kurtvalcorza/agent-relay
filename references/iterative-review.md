@@ -28,7 +28,7 @@ Example:
 ```text
 Planned lenses: design -> security -> reliability
 
-Pass 1: design      EXECUTED
+Pass 1: design      RAN
 Pass 2: security    FAILED
 Pass 3: reliability SKIPPED
 ```
@@ -41,11 +41,15 @@ A cycle MUST NOT convert a non-executed pass into "no findings".
 
 Use these execution statuses for planned passes:
 
-- `EXECUTED` — the pass actually ran against the recorded snapshot;
+- `RAN` — the pass actually executed against the recorded snapshot;
 - `FAILED` — the pass began but did not produce a valid result;
 - `SKIPPED` — the planned pass did not run.
 
-These are execution statuses, not finding lifecycle states.
+These are pass execution statuses, not finding lifecycle states and not claim
+maturity. The axis deliberately uses `RAN` rather than `EXECUTED`: `EXECUTED` is
+a claim-maturity state in `evidence-protocol.md`, and a single record carries
+both fields. A pass may be `RAN` while every claim it produced is still
+`ASSERTED`.
 
 ## Finding continuity across snapshots
 
@@ -59,12 +63,7 @@ Across later passes, a cycle may record observation metadata such as:
 
 These labels are observation metadata only. `NOT_OBSERVED` is not `DISPROVED`, and a Builder saying a finding is fixed is not `FIXED`.
 
-The authoritative finding lifecycle remains:
-
-- `FIXED`;
-- `DISPROVED`;
-- `DEFERRED`;
-- `BLOCKED`.
+The finding lifecycle is owned by [`evidence-protocol.md`](evidence-protocol.md) and is not restated here.
 
 During an active cycle a finding may remain `OPEN`. Before the cycle is durably terminated, every unresolved finding must receive an explicit terminal disposition or remain attached to a successor active cycle.
 
@@ -130,6 +129,10 @@ Budget exhaustion never lowers the declared assurance profile. Missing required 
 ### `BLOCKED`
 
 A required permission, environment, dependency, evidence source, immutable state, or other external condition prevents the next required pass.
+
+This is a cycle-level state and is distinct from a `BLOCKED` finding: it says the
+cycle could not continue, not that any particular defect is unrepairable. See the
+vocabulary table in [`evidence-protocol.md`](evidence-protocol.md).
 
 ### `CANCELLED`
 

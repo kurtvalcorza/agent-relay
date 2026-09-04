@@ -191,16 +191,46 @@ Do not use `DISPROVED` for:
 - stale code without checking the reported revision;
 - a test that does not exercise the claimed path.
 
-## Evidence closure
+## Finding lifecycle
 
-Every open finding should eventually converge to:
+This file owns the finding lifecycle. Other references and templates cite it
+rather than restating it.
 
+```text
+OPEN -> FIXED | DISPROVED | DEFERRED | BLOCKED
+```
+
+- `OPEN`: observed and not yet dispositioned;
 - `FIXED`: defect corrected and evidence rerun;
 - `DISPROVED`: claimed defect not present;
-- `DEFERRED`: valid but intentionally postponed;
+- `DEFERRED`: valid but intentionally postponed; record owner/reason/revisit condition;
 - `BLOCKED`: cannot currently establish or repair because of an external constraint.
 
+`FIXED` and `DISPROVED` are resolutions: the finding needs no further tracking.
+`DEFERRED` and `BLOCKED` are terminal dispositions that remain **tracked** — they
+answer "what happened to this finding", not "may we stop carrying it". A handoff's
+open-findings section therefore continues to list `OPEN`, `DEFERRED`, and
+`BLOCKED` findings until they are resolved or carried into a successor cycle.
+
 Avoid indefinite conversational debate.
+
+### Distinguishing the four vocabularies
+
+Four axes use overlapping words. A single record can carry all of them at once,
+so read each token against its own field:
+
+| Axis | Values | Owner |
+|---|---|---|
+| Finding lifecycle | `OPEN`, `FIXED`, `DISPROVED`, `DEFERRED`, `BLOCKED` | this file |
+| Claim maturity | `ASSERTED`, `INSPECTED`, `EXECUTED`, `VERIFIED` | this file |
+| Pass execution status | `RAN`, `FAILED`, `SKIPPED` | `iterative-review.md` |
+| Cycle termination reason | `NO_NEW_FINDINGS`, `BOUND_EXHAUSTED`, `BLOCKED`, `CANCELLED` | `iterative-review.md` |
+
+`BLOCKED` appears deliberately in two of them and means different things: a
+**finding** is `BLOCKED` when that defect cannot be established or repaired; a
+**cycle** terminates `BLOCKED` when the next required pass cannot proceed. A cycle
+can terminate `BLOCKED` with no blocked finding, and a finding can be `BLOCKED`
+inside a cycle that terminates `NO_NEW_FINDINGS`.
 
 Claim maturity and finding lifecycle are separate axes: a finding may remain `OPEN` while a Builder's repair claim moves from `ASSERTED` to `EXECUTED`, and the finding closes only after the appropriate verification/disposition.
 
