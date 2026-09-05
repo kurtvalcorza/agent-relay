@@ -56,6 +56,32 @@ Valid authority source: explicit user statement / durable project policy
 
 A vague continuation instruction such as `continue` does not by itself transfer a different authority class.
 
+### Standing authorization for a routine action
+
+A holder of an authority MAY pre-authorize a repeating routine outward action under an explicit condition, so the action does not require a fresh ask each round. Record durably:
+
+- the authorizing actor;
+- the exact action authorized;
+- the gate condition;
+- the bound: expiry, count, or the mission-anchor revision it is bound to;
+- that anything outside the envelope still stops for the holder.
+
+Example:
+
+```text
+Authorized by: user
+Action: push, then post the paced comment batch
+Condition: Windows suite green, Linux suite green, CI green
+Bound: this anchor revision
+Outside the envelope: stops for the user
+```
+
+A standing authorization removes a repeated ask for an already-authorized action. It does not change what must be true before the action is taken:
+
+- the gate condition MUST be evidence-backed when the envelope is exercised — a green check is a claim until inspected (see [`evidence-protocol.md`](evidence-protocol.md) § Infrastructure vs code failure);
+- the envelope grants no `evidence` and no `readiness` authority;
+- it does not survive an anchor revision that changes the meaning of its gate condition.
+
 ## Mission anchor
 
 A mission anchor is the immutable identity of the planning state an execution route is acting against.
