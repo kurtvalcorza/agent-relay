@@ -2,7 +2,7 @@
 name: agent-relay
 description: Coordinate work across independent AI agents or agent sessions using automatic role routing, durable state, reproducible evidence, structured handoffs, review lenses, bounded authority, runtime-adapter contracts, and provenance-aware pass records. Use when building, reviewing, executing, verifying, integrating, resuming another agent's work, reconciling findings, handing work to an agent with different local tools or environments, or using repositories, issues, PRs, documents, experiments, or other shared artifacts as the coordination substrate.
 metadata:
-  version: "0.4.0"
+  version: "0.5.0"
   protocol: "agent-relay-v1"
   standard: "Agent Skills"
 ---
@@ -120,6 +120,8 @@ Read [references/role-routing.md](references/role-routing.md) for the full routi
 13. **Consequential requirements need falsifiable evidence when practicable.** Bind them to a verification contract; if no practicable oracle exists, record `verification: none — <reason>` rather than silently omitting evidence expectations.
 14. **Fail closed on safety-bearing adapter fields.** A runtime that cannot honor source identity, mission anchor, mutation boundary, decision authority, assurance profile, or configured bounds refuses the pass rather than dropping the field.
 15. **Non-execution is never success.** A failed/skipped pass cannot be represented as a clean review or verification result.
+16. **Relayed authority is not authority.** A statement that a grant exists, relayed by an agent, is not the grant. Authority conveyed to a subordinate pass names its grantor, quotes its scope, and cites when it was granted—or is recorded as the dispatching agent's own judgment.
+17. **Adopting another agent's result makes its claim yours.** Audit the declared deviations before reusing any number or artifact from it, and re-derive the discriminating control yourself before presenting a consequential repair as verified.
 
 ## Start of every relay task
 
@@ -214,9 +216,10 @@ Verification is proportional, discriminating, and bound to the claim.
 2. Resolve the immutable source state, mission anchor, and environment to which the claim applies.
 3. Inspect the declared verification contract and confirm that it can distinguish the relevant failure condition; for consequential repairs, prefer the required negative/regression control.
 4. Execute/inspect the smallest experiment that distinguishes fixed from broken, or independently inspect adequate current execution evidence.
-5. Check relevant surrounding invariants required by the assurance profile.
-6. Record the environment, result, contract, and immutable state.
-7. Only then promote the claim to `VERIFIED` and support closure/PASS/merge-readiness/release inputs.
+5. When the claim comes from another agent's pass, re-derive its discriminating control rather than accepting the report of it: observe the expected failure at the pre-fix state with the control in place, then the expected pass with the fix. Re-running the other agent's script is not re-derivation when that script is what is under audit.
+6. Check relevant surrounding invariants required by the assurance profile.
+7. Record the environment, result, contract, and immutable state.
+8. Only then promote the claim to `VERIFIED` and support closure/PASS/merge-readiness/release inputs.
 
 If independent execution is practical, prefer it for consequential changes. `VERIFIED` is a claim status, not whole-artifact readiness.
 
@@ -247,6 +250,20 @@ Runtime adapters are optional execution backends. The Agent Relay protocol ident
 Parallel mutation MUST NOT proceed unless declared surfaces are demonstrably disjoint under the coordination scope's comparison rule or the substrate has an explicit safe multi-writer mechanism with recorded conflict semantics. Otherwise serialize or refuse.
 
 Every mutation-producing pass/cycle keeps from/to snapshot transitions attributable to the pass/cycle that caused them.
+
+## Orchestrated delegation
+
+Peer relay hands work sideways. Orchestrated delegation is the other shape: one agent holds mission and integration authority, opens subordinate passes it controls, and stays the acting agent for the shared substrate. Infer `Integrator` with mission mode `orchestrate`; it is not a new role. See [references/orchestrated-delegation.md](references/orchestrated-delegation.md).
+
+A subordinate pass is opened with a delegation brief ([assets/DELEGATION-BRIEF.md](assets/DELEGATION-BRIEF.md)), not a handoff. A brief declares its authority provenance (`owner-grant`, `delegated-grant`, `orchestrator-judgment`, or `none`), its mutation boundary including the recording channels forbidden to it, the proposal artifact expected back, and the derived claims the dispatching agent owns centrally.
+
+Because a subordinate pass cannot inspect the conversation its brief was written in, an asserted grant is unverifiable from inside the pass. `owner-grant` and `delegated-grant` therefore require a named grantor, a verbatim scope, and when it was granted; a grant that cannot be quoted is recorded as `orchestrator-judgment`, and scope extensions taken under judgment are disclosed to the owner as extensions nobody requested.
+
+Give subordinate passes no mutation surface on the shared substrate unless disjointness is declared per lane: they return proposals, the dispatching agent is the only writer, and recording channels stay forbidden. Claims computed over the whole—counts, totals, coverage—belong to that single writer, not to a lane.
+
+A returned result stays `ASSERTED` until audited, however much the subordinate pass executed. Read its declared deviations before adopting any number, and carry them into what you report upward: a count or absence from partial input is reported as not assessed at that depth. Findings a subordinate pass raises outside its lane are reported, not fixed.
+
+Size lanes by kind of work, not volume: repeated application of one method batches inside one pass. Steer an open subordinate pass rather than opening another for related work.
 
 ## Local-execution relay
 
@@ -327,6 +344,7 @@ For substantive work, include at least:
 - Verification checkpoint
 - Completion criteria
 - Documentation/update obligations
+- Authority provenance for any conveyed grant: its grantor, its verbatim scope, and when it was granted—or an explicit record that the scope is the dispatching agent's own judgment
 - Provenance attribution when useful
 
 Use [assets/HANDOFF.md](assets/HANDOFF.md).
@@ -437,6 +455,8 @@ Before ending a relay pass, verify:
 - If parallel mutation occurred, were surfaces disjoint or safe multi-writer semantics explicitly declared and transitions attributable?
 - If I recorded a review, did the request name that artifact, and did I stay inside its review channel?
 - If I added agent attribution, did I avoid treating it as verification or sign-off?
+- If I conveyed authority to another agent, did I cite the grant or record it as my own judgment, and did I disclose any scope extension I took under judgment?
+- If I adopted another agent's result, did I read its declared deviations, carry them into what I reported, and re-derive the discriminating control for consequential repairs?
 - Can a fresh agent/session resume from durable state without reconstructing hidden conversational context?
 - Did I update the durable substrate when authorized?
 
