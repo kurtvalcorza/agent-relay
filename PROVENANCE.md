@@ -80,6 +80,20 @@ Two review passes shaped the released form:
 
 Both passes are recorded on the pull requests that introduced them; neither agent's summary is treated as evidence independent of the diffs and tests it cites.
 
+## v0.5.0 — orchestrated delegation
+
+The v0.5.0 revision has a narrower origin than v0.4.0: it comes from operating the protocol as an orchestrator through a multi-round external-review loop on a separate repository, where an agent dispatched subordinate agent passes rather than handing work to a peer. Peer relay was already specified. Dispatch was not, and three defects appeared in practice that the existing rules did not prevent.
+
+First, a scope extension that no owner had granted was relayed to a subordinate pass as an owner clearance. The orchestrator had decided the extension was warranted — that was within its authority — but the subordinate pass received the decision as though it came from the owner, and could not tell the difference from inside its own window. The subordinate pass's own review caught it. Rule 11 already said attribution is provenance rather than authority; the mirror case, that a relayed *statement about* authority is not authority either, was unstated. It is now rule 16, and it is enforced rather than merely asserted: the delegation brief carries an authority provenance source from a closed vocabulary, and `owner-grant` and `delegated-grant` fail validation unless the record names the grantor, quotes the scope verbatim, and cites when it was granted. A grant that cannot be quoted is recorded as `orchestrator-judgment`, which makes an ungranted extension impossible to record silently.
+
+Second, claims computed over the whole substrate went stale at intermediate states. Counts recorded in a readme and a pull-request description were true at the branch tip and false at several commits behind it, because each lane changed part of the whole. Such claims are now declared centrally owned by the single writer, and briefs ask subordinate passes for the inputs instead.
+
+Third, a repair's discriminating control was reported by the same pass that authored the repair, and was initially adopted on that report. A related instance of the same defect class survived a repair round and was found by the next external review round, which is the empirical reason the revision requires the adopting agent to re-derive the control itself rather than accept a report of it, and requires declared deviations to be read before any number from a subordinate pass is reused. Adopting a result makes its claim the adopter's own; that is rule 17.
+
+The executable surface is a fourth validated record kind in `scripts/validate_handoff.py` — the delegation brief — with structural tests in `tests/test_protocol_v05.py`. The same revision adds a version-consistency test, since the skill version is declared in both `SKILL.md` metadata and `README.md` and had no check binding them together.
+
+The limitation is recorded rather than concealed: these three defects were observed on one repository, in one orchestration pattern, with a single orchestrating agent. The requirements they motivated are structural and expected to generalize, but they have not been validated across multiple substrates or runtimes. Review of this revision is recorded on the pull request that introduced it; neither the drafting agent's summary nor a reviewer's is treated as evidence independent of the diffs and tests it cites.
+
 ## Agent attribution convention
 
 Agent Relay supports compact provenance footers for substantive durable agent-generated records.

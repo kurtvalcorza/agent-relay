@@ -3,7 +3,8 @@
 
 Uses only the Python standard library. It does not interpret correctness,
 permissions, or whether a role route is semantically appropriate; it checks
-that handoff, review, and agent-pass records contain their minimum fields and
+that handoff, review, agent-pass, and delegation-brief records contain their
+minimum fields and
 that optional safety-bearing metadata is structurally explicit when present.
 """
 
@@ -48,6 +49,21 @@ REVIEW_REQUIRED_HEADINGS = (
     "Provenance",
 )
 
+# A delegation brief opens a subordinate pass under retained authority, so its
+# minimum differs from a handoff's: it must say where its authority came from,
+# what it may not record, and what proposal artifact comes back.
+BRIEF_REQUIRED_HEADINGS = (
+    "Mission",
+    "Lane",
+    "Authority provenance",
+    "Authoritative substrate",
+    "Current immutable snapshot",
+    "Mutation boundaries",
+    "Required deliverables",
+    "Return contract",
+    "Completion criteria",
+)
+
 # Keep the v0.3 pass minimum for backward compatibility. v0.4 safety-bearing
 # fields are validated when present rather than made retroactively mandatory.
 PASS_REQUIRED_PREFIXES = (
@@ -75,6 +91,7 @@ _TITLE_KIND = {
     "Agent Relay Handoff": "handoff",
     "Agent Relay Review": "review",
     "Agent Pass Record": "pass",
+    "Agent Relay Delegation Brief": "brief",
 }
 
 _PLACEHOLDER_RE = re.compile(r"<[^>\n]+>")
@@ -102,6 +119,16 @@ TERMINATION_REASONS = {
     "n/a",
 }
 CLAIM_MATURITIES = {"ASSERTED", "INSPECTED", "EXECUTED", "VERIFIED"}
+# Owned by references/orchestrated-delegation.md. Stored normalized because
+# enum comparison lowercases and maps "-" to "_".
+AUTHORITY_SOURCES = {
+    "owner_grant",
+    "delegated_grant",
+    "orchestrator_judgment",
+    "none",
+}
+# Sources that assert an external grant exists, and therefore must cite it.
+GRANT_BEARING_SOURCES = {"owner_grant", "delegated_grant"}
 # Owned by references/evidence-protocol.md.
 FINDING_STATES = {"open", "fixed", "disproved", "deferred", "blocked"}
 
@@ -159,6 +186,7 @@ def _headings(text: str) -> set[str]:
 _BOUNDARY_SECTION = {
     "handoff": "Mutation permissions",
     "review": "Mutation boundaries",
+    "brief": "Mutation boundaries",
 }
 
 
@@ -262,6 +290,8 @@ def _detect_kind(text: str) -> str:
         / len(REVIEW_REQUIRED_HEADINGS),
         "pass": _prefixes_present(text, PASS_REQUIRED_PREFIXES)
         / len(PASS_REQUIRED_PREFIXES),
+        "brief": sum(h in headings for h in BRIEF_REQUIRED_HEADINGS)
+        / len(BRIEF_REQUIRED_HEADINGS),
     }
 
     best_kind, best_score = max(scores.items(), key=lambda item: item[1])
@@ -488,6 +518,49 @@ def _claim_maturity_errors(entries: list[str]) -> list[str]:
     return errors
 
 
+_ABSENT_VALUES = {"", "n/a", "na", "none", "tbd", "unknown"}
+
+
+def _authority_provenance_errors(text: str) -> list[str]:
+    """Require a brief's conveyed authority to cite its own source.
+
+    A subordinate pass cannot inspect the conversation its brief was written
+    in, so an asserted grant is unverifiable from inside the pass. Briefs
+    therefore fail closed: either the grant is cited, or the dispatching agent
+    records the scope as its own judgment. This checks structure only; it does
+    not authenticate a grantor or interpret whether the scope covers the task.
+    """
+
+    section = "Authority provenance"
+    source = _section_field_value(text, section, "Source:")
+    if source is None or source.strip().lower() in {"", "n/a", "na"}:
+        return [
+            "brief must declare an authority provenance source "
+            "(owner-grant | delegated-grant | orchestrator-judgment | none)"
+        ]
+
+    normalized = source.strip().lower().replace("-", "_")
+    if normalized not in AUTHORITY_SOURCES:
+        return [f"invalid authority provenance source: {source}"]
+    if normalized not in GRANT_BEARING_SOURCES:
+        return []
+
+    errors: list[str] = []
+    for prefix, requirement in (
+        ("Grantor:", "a named grantor"),
+        ("Granted scope (verbatim):", "the granted scope quoted verbatim"),
+        ("Granted at:", "when or against what state it was granted"),
+    ):
+        value = _section_field_value(text, section, prefix)
+        if value is None or value.strip().lower().strip(".") in _ABSENT_VALUES:
+            errors.append(
+                f"authority provenance source {source} requires {requirement} "
+                f"({prefix.rstrip(':')}); record orchestrator-judgment instead "
+                "when the grant cannot be cited"
+            )
+    return errors
+
+
 def _pass_cycle_continuity_errors(text: str) -> list[str]:
     """Require durable finding continuity only for actual v0.4 cycle records."""
 
@@ -520,7 +593,7 @@ def _pass_cycle_continuity_errors(text: str) -> list[str]:
 def validate(text: str, *, kind: str = "auto") -> list[str]:
     errors: list[str] = []
     selected_kind = _detect_kind(text) if kind == "auto" else kind
-    if selected_kind not in {"handoff", "review", "pass"}:
+    if selected_kind not in {"handoff", "review", "pass", "brief"}:
         if kind == "auto":
             return ["could not determine record kind; pass --kind"]
         raise ValueError(f"unknown record kind: {selected_kind}")
@@ -535,13 +608,17 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
         for heading in REVIEW_REQUIRED_HEADINGS:
             if heading not in headings:
                 errors.append(f"missing heading: {heading}")
+    elif selected_kind == "brief":
+        for heading in BRIEF_REQUIRED_HEADINGS:
+            if heading not in headings:
+                errors.append(f"missing heading: {heading}")
     else:
         stripped_lines = [line.strip() for line in _outside_fences(text)]
         for prefix in PASS_REQUIRED_PREFIXES:
             if not any(line.startswith(prefix) for line in stripped_lines):
                 errors.append(f"missing field: {prefix}")
 
-    if selected_kind in {"handoff", "review"}:
+    if selected_kind in {"handoff", "review", "brief"}:
         lowered = _section_body(text, _BOUNDARY_SECTION[selected_kind]).lower()
         if "read-only" not in lowered and "forbidden" not in lowered:
             errors.append(
@@ -564,6 +641,11 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
                 ).splitlines()
             )
         )
+        _validate_enum_section(text, "Mission mode", MISSION_MODES, errors)
+        _validate_enum_section(text, "Assurance profile", ASSURANCE_PROFILES, errors)
+
+    if selected_kind == "brief":
+        errors.extend(_authority_provenance_errors(text))
         _validate_enum_section(text, "Mission mode", MISSION_MODES, errors)
         _validate_enum_section(text, "Assurance profile", ASSURANCE_PROFILES, errors)
 
@@ -630,7 +712,7 @@ def main() -> int:
     parser.add_argument("record", type=Path)
     parser.add_argument(
         "--kind",
-        choices=("auto", "handoff", "review", "pass"),
+        choices=("auto", "handoff", "review", "pass", "brief"),
         default="auto",
     )
     args = parser.parse_args()

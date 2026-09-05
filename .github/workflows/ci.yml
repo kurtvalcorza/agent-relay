@@ -33,3 +33,5 @@ jobs:
       # Regression for PR #12: the main guard must remain below every v0.4 test
       # class so direct module execution cannot silently skip later tests.
       - run: python -m tests.test_protocol_v04
+      # Same guard-placement regression for the v0.5 module.
+      - run: python -m tests.test_protocol_v05
