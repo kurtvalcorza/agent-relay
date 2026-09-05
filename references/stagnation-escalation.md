@@ -18,6 +18,8 @@ Examples include:
 
 A runtime may use numeric retry thresholds, but Agent Relay does not prescribe provider-specific counts.
 
+Every signal above fires on repeated non-progress. A delegated pass also has first-occurrence conditions — a regression after its own change, a conflict in a file shared across layers, a mismatch between its report and its logs, or an environment kill — on which it returns control to the delegating participant instead of continuing. Those are return conditions, not stagnation signals; see [`cost-aware-delegation.md`](cost-aware-delegation.md).
+
 ## Signal, not state
 
 Do not add `STAGNATED` to the finding lifecycle or cycle termination vocabulary.

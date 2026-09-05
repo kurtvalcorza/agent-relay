@@ -267,6 +267,16 @@ When another agent has the necessary environment, do not send a vague request su
 
 Use [assets/HANDOFF.md](assets/HANDOFF.md) and [references/local-execution.md](references/local-execution.md).
 
+## Cost-aware delegation
+
+Participants in one relay may differ in cost per unit of work. Cost and throughput MAY be routing inputs, but they rank below explicit assignment, boundaries and decision authority, and environment feasibility: an economic input orders otherwise-equivalent routes and never moves a decision, widens authority, or lowers an assurance profile.
+
+Delegate long, parallelizable, judgment-light work to a lower-cost participant. Keep work whose output is a judgment the delegating participant would have to re-derive — finding dispositions, owning-layer placement, merge-conflict resolution, and schema/specification semantics. Do not delegate a task smaller than the packet and verification it requires.
+
+A delegated pass SHOULD return a machine-checkable artifact in a schema the packet declared, SHOULD return control rather than self-repair on a regression, shared-file conflict, report/log mismatch, or environment kill, and SHOULD write its durable record incrementally so an interruption costs one increment rather than the pass. Delegation adds no role and changes no evidence burden.
+
+Read [references/cost-aware-delegation.md](references/cost-aware-delegation.md).
+
 ## Receiving a handoff
 
 Treat a handoff as a claim about prior state, not current truth.
