@@ -53,10 +53,15 @@ REVIEW_REQUIRED_HEADINGS = (
 # minimum differs from a handoff's: it must say where its authority came from,
 # what it may not record, and what proposal artifact comes back.
 # Rule 14 names mission anchor, mutation boundary, decision authority,
-# assurance profile and configured bounds as safety-bearing: a runtime that
-# cannot carry one refuses the pass rather than dropping it. A brief opens a
-# pass, so its minimum carries them. `Bounds` is the brief's carrier for cycle
-# identity and the bound the pass counts against.
+# assurance profile and configured bounds as safety-bearing. A brief opens a
+# pass, so its minimum carries the three it can: the mutation boundary, the
+# assurance profile, and `Bounds` — the brief's carrier for cycle identity and
+# the bound the pass counts against. `Mission mode` is required alongside them
+# because the brief declares one and an unvalidated mode is a silent default.
+# Mission anchor and decision authority have no brief section yet: the brief
+# runs under the dispatching agent's retained authority, and whether it should
+# carry its own envelope is an open design question rather than an omission
+# this minimum settles.
 BRIEF_REQUIRED_HEADINGS = (
     "Mission",
     "Mission mode",
@@ -336,6 +341,28 @@ def _validate_section_field(
     normalized = value.lower().replace("-", "_")
     if normalized not in allowed:
         errors.append(f"invalid {prefix.rstrip(':').lower()}: {value}")
+
+
+def _empty_section_errors(text: str, headings: tuple[str, ...]) -> list[str]:
+    """Refuse a present-but-empty safety-bearing section.
+
+    Requiring the heading closes deletion; it does not close emptying, and an
+    empty body drops the field just as effectively (`_validate_enum_section`
+    returns early on one). Rule 14 refuses a pass over a safety-bearing field
+    rather than dropping it, so for those sections presence is not enough.
+    """
+
+    return [
+        f"section is present but empty: {heading}"
+        for heading in headings
+        if heading in _headings(text) and not _section_body(text, heading).strip()
+    ]
+
+
+# Brief sections whose content is safety-bearing under rule 14. Scoped to the
+# brief because that kind is introduced by this revision: applying the same
+# strictness to handoff or review would refuse records that are valid today.
+BRIEF_NON_EMPTY_SECTIONS = ("Mission mode", "Assurance profile", "Bounds")
 
 
 def _validate_enum_section(
@@ -658,12 +685,18 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
 
     # Rule 16 is not brief-specific: a handoff or review that conveys a grant
     # must cite it too (SKILL.md, handoff content checklist). The section stays
-    # optional for those kinds so previously valid records remain valid, but it
-    # is checked wherever it appears.
+    # optional for those kinds, so a record without it is unaffected. A record
+    # that carries it is checked, and that is a real narrowing rather than a
+    # no-op: a handoff stating its grant in prose, under different field names,
+    # or under an empty heading validated clean before this and is refused now.
+    # Refusing an uncited grant is the point of rule 16, but the break is worth
+    # naming. Delete the heading rather than leaving it empty when the record
+    # conveys no grant.
     if selected_kind == "brief" or "Authority provenance" in headings:
         errors.extend(_authority_provenance_errors(text))
 
     if selected_kind == "brief":
+        errors.extend(_empty_section_errors(text, BRIEF_NON_EMPTY_SECTIONS))
         _validate_enum_section(text, "Mission mode", MISSION_MODES, errors)
         _validate_enum_section(text, "Assurance profile", ASSURANCE_PROFILES, errors)
 

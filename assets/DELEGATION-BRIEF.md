@@ -50,7 +50,7 @@ constraints (interpreter version, toolchain, persistence limits).>
 <A delegated pass is an ordinary pass for cycle accounting: it keeps the cycle's identity and counts against its bounds.>
 - Cycle ID: <cycle this pass belongs to, or `N/A`>
 - Pass bound: <the bound this pass counts against, e.g. 1 of 3 passes in this cycle>
-- On exhaustion: <what happens when the bound is reached; a bound reached is `BOUND_EXHAUSTED`, never a clean result>
+- On exhaustion: <what happens when this pass's bound is reached; a bound reached is never a clean result. `BOUND_EXHAUSTED` is a cycle termination reason, so record it on the cycle this pass belongs to, not on the pass.>
 
 ## Centrally owned derived claims
 - <claims computed over the whole substrate that this pass must not edit — counts, totals, coverage, inventories — and the inputs it should report back instead>

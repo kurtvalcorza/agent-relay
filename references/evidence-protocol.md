@@ -30,17 +30,17 @@ Use, when useful:
 
 A maturity statement should remain bound to the claim, verification contract, source snapshot, and environment where environment semantics matter. If a source revision later changes, the historical verification remains true only for the state it names; a new state requires new evidence rather than "downgrading" the old claim.
 
+Only Verifier behavior promotes a consequential claim to `VERIFIED`. An Integrator may reuse adequate current `VERIFIED` evidence without manufacturing another verification pass, but must still make the separate readiness decision.
+
+`VERIFIED` for one claim does not imply that the whole artifact is ready, mergeable, released, deployed, or approved.
+
 ### Maturity of a relayed or adopted claim
 
 Maturity is bound to the claim, verification contract, snapshot, and environment. It is not relative to whoever is holding the record. A pass therefore records the maturity its own evidence supports, and relaying that record does not transfer the token.
 
 For an agent receiving another pass's record, the token in that record is an `ASSERTED` claim *about* maturity until the receiving agent inspects the evidence the record cites. After inspecting it, the receiving agent records the maturity its own inspection supports. Adoption does not downgrade the originating record, and it does not let the adopting agent skip a step: the subordinate record keeps saying what its own evidence established, and the adopting agent may not reuse that token before inspecting what it stands on.
 
-Adopting another agent's result makes its claim the adopting agent's own. For a consequential repair, the adopting agent MUST re-derive the discriminating control itself rather than accept a report of it: restore the pre-fix state of the changed surface with the new control in place, observe the expected failure, restore the fix, and observe the expected pass. Re-running the other agent's own script is not re-derivation where that script is what is being audited. Where re-derivation is impracticable, the claim stays at `EXECUTED` with the reason recorded and is not presented as independently verified.
-
-Only Verifier behavior promotes a consequential claim to `VERIFIED`. An Integrator may reuse adequate current `VERIFIED` evidence without manufacturing another verification pass, but must still make the separate readiness decision.
-
-`VERIFIED` for one claim does not imply that the whole artifact is ready, mergeable, released, deployed, or approved.
+Adopting another agent's result makes its claim the adopting agent's own. For a consequential repair, the adopting agent MUST re-derive the discriminating control itself rather than accept a report of it: restore the pre-fix state of the changed surface with the new control in place, observe the expected failure, restore the fix, and observe the expected pass. Re-running the other agent's own script is not re-derivation where that script is what is being audited. Where re-derivation is impracticable, the claim stays at the maturity the adopting agent's own evidence supports — `EXECUTED` where it ran the behavior itself, `INSPECTED` where it only read the evidence — with the reason recorded, and it is not presented as independently verified.
 
 ## Assurance profiles
 

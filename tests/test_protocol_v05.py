@@ -8,6 +8,7 @@ agent must record the scope as its own judgment instead.
 """
 
 import pathlib
+import re
 import unittest
 
 from scripts.validate_handoff import _detect_kind, validate
@@ -88,6 +89,24 @@ def _without_section(text: str, heading: str) -> str:
         len(lines),
     )
     return "\n".join(lines[:start] + lines[end:])
+
+
+def _with_empty_section(text: str, heading: str) -> str:
+    """Keep one `##` heading but drop everything under it."""
+
+    lines = text.splitlines()
+    start = next(
+        index for index, line in enumerate(lines) if line.strip() == f"## {heading}"
+    )
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].startswith("## ")
+        ),
+        len(lines),
+    )
+    return "\n".join(lines[: start + 1] + [""] + lines[end:])
 
 
 def _untitled(text: str) -> str:
@@ -396,28 +415,68 @@ class ReviewRepairTests(unittest.TestCase):
                 doc.read_text(encoding="utf-8"),
             )
 
+    @staticmethod
+    def _words(text):
+        """Compare on words, so emphasis markers and wrapping do not matter."""
+
+        return " ".join(re.sub(r"[*_`]", "", text).split())
+
     def test_parallel_mutation_rule_is_not_weakened_for_lanes(self):
         # R-03: SKILL.md stated "unless disjointness is declared per lane"
         # twelve lines below the owned rule requiring demonstrable disjointness.
         skill = (self.ROOT / "SKILL.md").read_text(encoding="utf-8")
         self.assertNotIn("unless disjointness is declared", skill)
         section = skill.split("## Orchestrated delegation", 1)[1].split("\n## ", 1)[0]
-        self.assertIn("demonstrably disjoint", section)
+        self.assertIn("demonstrably disjoint", self._words(section))
         delegation = (
             self.ROOT / "references" / "orchestrated-delegation.md"
         ).read_text(encoding="utf-8")
-        self.assertIn("demonstrably* disjoint", delegation)
+        self.assertIn("demonstrably disjoint", self._words(delegation))
+
+    def test_the_owned_parallel_mutation_rule_keeps_its_qualifier(self):
+        # OL-1 from the repair review: the repair protected the derived
+        # sentence in the orchestration section but not the owned rule the
+        # derived sentence defers to.
+        skill = self._words((self.ROOT / "SKILL.md").read_text(encoding="utf-8"))
+        adapters = self._words(
+            (self.ROOT / "references" / "runtime-adapters.md").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn(
+            "Parallel mutation MUST NOT proceed unless declared surfaces are "
+            "demonstrably disjoint",
+            skill,
+        )
+        # The owning file phrases the same requirement its own way. Both halves
+        # of it must survive: disjointness has to be established, and anything
+        # that cannot be shown disjoint counts as overlapping.
+        self.assertIn("the surfaces are established disjoint", adapters)
+        self.assertIn(
+            "If two declared surfaces cannot be shown disjoint under that "
+            "comparison rule, they are treated as overlapping.",
+            adapters,
+        )
 
     def test_enforcement_claims_state_what_the_check_cannot_do(self):
         # R-01: the durable record claimed the field made an ungranted
         # extension impossible to record silently. A structural check cannot
         # establish that a quotation is faithful.
-        provenance = (self.ROOT / "PROVENANCE.md").read_text(encoding="utf-8")
+        provenance = self._words(
+            (self.ROOT / "PROVENANCE.md").read_text(encoding="utf-8")
+        )
         self.assertNotIn("impossible to record silently", provenance)
-        self.assertIn("cannot establish that the quoted scope is faithful", provenance)
-        readme = (self.ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("cannot establish", provenance)
+        self.assertIn("faithful", provenance)
+        readme = self._words((self.ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertNotIn("validated, fail-closed field", readme)
-        self.assertIn("does not judge whether a quotation is faithful", readme)
+        # Anchor on the disclaimer being made, not on its exact wording.
+        bullet = next(
+            line
+            for line in readme.split("- ")
+            if line.startswith("Authority provenance")
+        )
+        self.assertIn("does not judge", bullet)
 
     def test_brief_minimum_carries_the_safety_bearing_fields(self):
         # R-08 / R-15: rule 14 names assurance profile and configured bounds
@@ -438,15 +497,76 @@ class ReviewRepairTests(unittest.TestCase):
         errors = validate(_without_section(VALID_BRIEF, "Assurance profile"))
         self.assertIn("missing heading: Assurance profile", errors)
 
+    def test_re_derivation_requirement_survives_in_the_owning_file(self):
+        # F-07 from the repair review: because orchestrated-delegation.md now
+        # cites this requirement instead of restating it, weakening the one
+        # paragraph would remove it from the corpus with nothing detecting it.
+        evidence = self._words(
+            (self.ROOT / "references" / "evidence-protocol.md").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn(
+            "the adopting agent MUST re-derive the discriminating control itself "
+            "rather than accept a report of it",
+            evidence,
+        )
+        delegation = self._words(
+            (self.ROOT / "references" / "orchestrated-delegation.md").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn("MUST re-derive the discriminating control itself", delegation)
+
+    def test_maturity_is_not_relative_to_the_reader(self):
+        # F-07: the sentence that resolves R-02 was invertible with the suite
+        # green, as was the exact SKILL.md phrasing R-02 was raised against.
+        evidence = self._words(
+            (self.ROOT / "references" / "evidence-protocol.md").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn("It is not relative to whoever is holding the record.", evidence)
+        skill = self._words((self.ROOT / "SKILL.md").read_text(encoding="utf-8"))
+        self.assertIn("in the dispatching agent's hands until it inspects", skill)
+
+    def test_a_safety_bearing_brief_section_cannot_be_emptied(self):
+        # F-05 from the repair review: requiring the heading closed deletion
+        # but not emptying, and `_validate_enum_section` returns early on an
+        # empty body — so the enum check was still skippable.
+        for heading in ("Mission mode", "Assurance profile", "Bounds"):
+            emptied = _with_empty_section(VALID_BRIEF, heading)
+            self.assertIn(f"section is present but empty: {heading}", validate(emptied))
+
+    def test_emptying_is_not_checked_for_the_older_record_kinds(self):
+        # Scoped to the brief on purpose: the same strictness on a handoff
+        # would refuse records that validate today.
+        emptied = _with_empty_section(_HANDOFF_TEXT, "Assurance profile")
+        self.assertEqual(_detect_kind(emptied), "handoff")
+        self.assertFalse(
+            [error for error in validate(emptied) if "present but empty" in error]
+        )
+
     def test_vocabulary_registry_lists_authority_provenance(self):
         # R-06: the registry that assigns each closed vocabulary an owning file
         # said four while the revision added a fifth.
         evidence = (self.ROOT / "references" / "evidence-protocol.md").read_text(
             encoding="utf-8"
         )
-        self.assertIn("Distinguishing the five vocabularies", evidence)
-        self.assertIn("| Authority provenance |", evidence)
-        self.assertIn("`orchestrated-delegation.md` |", evidence)
+        registry = evidence.split("vocabularies", 1)[1].split("\n## ", 1)[0]
+        row = next(
+            line for line in registry.splitlines() if "Authority provenance" in line
+        )
+        for value in ("owner-grant", "delegated-grant", "orchestrator-judgment"):
+            self.assertIn(value, row)
+        self.assertIn("orchestrated-delegation.md", row)
+        # The count in the heading has to move with the table.
+        self.assertEqual(
+            len([line for line in registry.splitlines() if line.strip().startswith("|")])
+            - 2,  # header row and delimiter row
+            5,
+        )
+        self.assertIn("five vocabularies", evidence)
 
 
 # The main guard stays below every v0.5 test class so direct module execution
