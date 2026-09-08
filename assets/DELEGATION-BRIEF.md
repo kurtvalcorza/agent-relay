@@ -46,6 +46,12 @@ constraints (interpreter version, toolchain, persistence limits).>
 - <shared-substrate writes forbidden to this pass, e.g. no push, no comment, no description edit>
 - <files owned by another lane or by the dispatcher>
 
+## Bounds
+<A delegated pass is an ordinary pass for cycle accounting: it keeps the cycle's identity and counts against its bounds.>
+- Cycle ID: <cycle this pass belongs to, or `N/A`>
+- Pass bound: <the bound this pass counts against, e.g. 1 of 3 passes in this cycle>
+- On exhaustion: <what happens when the bound is reached; a bound reached is `BOUND_EXHAUSTED`, never a clean result>
+
 ## Centrally owned derived claims
 - <claims computed over the whole substrate that this pass must not edit — counts, totals, coverage, inventories — and the inputs it should report back instead>
 
@@ -73,7 +79,7 @@ scope extension.>
 - Declared deviations: <every place this pass processed less than, or other than, what this brief named, or `none`>
 - Non-reproduction is a valid result: <state whether a finding failing to reproduce should be reported rather than repaired>
 - Residual risk and environment-specific gaps: <expected disclosures>
-- Claim maturity ceiling: <maturity this pass may claim without independent audit, e.g. EXECUTED>
+- Claim maturity ceiling: <the highest maturity this pass may record in its own return, e.g. EXECUTED. The dispatching agent still holds an adopted claim at `ASSERTED` until it inspects the evidence cited here.>
 
 ## Completion criteria
 - <criterion>

@@ -86,8 +86,11 @@ it most cheaply by giving subordinate passes no mutation surface on the shared s
   the brief.
 
 Reading the substrate remains allowed unless separately restricted. Where subordinate passes
-must write directly, the brief declares the disjoint surfaces per lane and the substrate's
-conflict semantics; overlapping lanes serialize.
+must write directly, the rule above is not relaxed: the brief declares each lane's surface, and
+those surfaces must be *demonstrably* disjoint under the coordination scope's comparison rule, or
+the substrate must offer a safe multi-writer mechanism whose conflict semantics the brief records.
+A declaration is the record of the comparison, not a substitute for it. Overlapping lanes
+serialize, and a lane whose disjointness cannot be demonstrated is refused a direct write surface.
 
 Assign distinct file or artifact names per lane even under the proposal model, so that two
 proposals cannot collide when applied.
@@ -131,8 +134,12 @@ carries that qualification into every summary that reuses it.
 
 Normative requirements:
 
-1. An unaudited subordinate result is not evidence. Until the Orchestrator audits it, its
-   maturity is `ASSERTED` regardless of what the subordinate pass ran.
+1. An unaudited subordinate result is not evidence *to the Orchestrator*. The subordinate
+   pass records the maturity its own evidence supports, up to the ceiling its brief declared;
+   relaying that record does not transfer the token. Until the Orchestrator inspects the
+   evidence the record cites, it holds the claim at `ASSERTED`, because the subordinate's
+   token is at that point a claim about maturity rather than an established one. See
+   [`evidence-protocol.md`](evidence-protocol.md) § Maturity of a relayed or adopted claim.
 2. The Orchestrator MUST read the declared deviations before adopting any number, claim, or
    artifact from the pass, and MUST propagate them into what it reports upward.
 3. A subordinate pass that reports a finding outside its lane MUST NOT fix it. The
@@ -144,15 +151,12 @@ Normative requirements:
 
 ## Verifier minimum for adopted repairs
 
-Adopting a subordinate pass's repair means asserting its claim as the Orchestrator's own. For
-a consequential repair, the adopting agent MUST re-derive the discriminating control itself
-rather than accept the subordinate pass's report of it: restore the pre-fix state of the
-changed surface with the new control in place, observe the expected failure, restore the fix,
-and observe the expected pass.
-
-Re-running the subordinate pass's own script is not re-derivation if the script is what is
-being audited. Where re-derivation is impracticable, the claim stays at `EXECUTED` with the
-reason recorded, and the repair is not presented as independently verified.
+Adopting a subordinate pass's repair means asserting its claim as the Orchestrator's own, so
+the re-derivation requirement owned by [`evidence-protocol.md`](evidence-protocol.md)
+§ Maturity of a relayed or adopted claim applies to the Orchestrator: for a consequential
+repair it MUST re-derive the discriminating control itself rather than accept the subordinate
+pass's report of it. Re-running the subordinate pass's own script is not re-derivation if the
+script is what is being audited.
 
 An Orchestrator that authored or adopted a change is not an independent reviewer of it.
 Consequential adopted changes route to a reviewer outside the delegation tree.

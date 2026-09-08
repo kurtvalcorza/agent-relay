@@ -47,6 +47,11 @@ Repository under review.
 ### Strictly read-only / forbidden
 - durable records, review threads, and PR state are forbidden to this pass
 
+## Bounds
+- Cycle ID: C-1
+- Pass bound: 1 of 3 passes in this cycle
+- On exhaustion: return BOUND_EXHAUSTED, never a clean result
+
 ## Centrally owned derived claims
 - test counts are owned by the dispatching agent; report the inputs instead
 
@@ -85,6 +90,18 @@ def _without_section(text: str, heading: str) -> str:
     return "\n".join(lines[:start] + lines[end:])
 
 
+def _untitled(text: str) -> str:
+    """Drop the top-level title so detection must fall through to scoring."""
+
+    return "\n".join(
+        line for line in text.splitlines() if not line.startswith("# ")
+    )
+
+
+_REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+_HANDOFF_TEXT = (_REPO_ROOT / "assets" / "HANDOFF.md").read_text(encoding="utf-8")
+
+
 class DelegationBriefValidatorTests(unittest.TestCase):
     """A brief is a distinct record kind with its own minimum."""
 
@@ -92,7 +109,19 @@ class DelegationBriefValidatorTests(unittest.TestCase):
         self.assertEqual(validate(VALID_BRIEF), [])
 
     def test_brief_is_detected_from_its_title(self):
-        self.assertEqual(_detect_kind(VALID_BRIEF), "brief")
+        # Discriminating control for the title map: this record is structurally
+        # a handoff, so only `_TITLE_KIND` can return "brief" for it. Asserting
+        # on VALID_BRIEF alone would pass with the title entry deleted, because
+        # the structural-fit fallback returns "brief" for a compliant record.
+        titled_but_not_brief_shaped = "# Agent Relay Delegation Brief\n" + _untitled(
+            _HANDOFF_TEXT
+        )
+        self.assertEqual(_detect_kind(titled_but_not_brief_shaped), "brief")
+
+    def test_brief_is_detected_from_structure_without_a_title(self):
+        # Discriminating control for the kind-score table: with the title gone,
+        # only the "brief" candidate score can return "brief".
+        self.assertEqual(_detect_kind(_untitled(VALID_BRIEF)), "brief")
 
     def test_missing_required_heading_is_reported(self):
         text = _without_section(VALID_BRIEF, "Required deliverables")
@@ -114,10 +143,13 @@ class DelegationBriefValidatorTests(unittest.TestCase):
         self.assertIn("invalid mission mode: repair", validate(text))
 
     def test_adding_the_brief_kind_did_not_break_handoff_detection(self):
-        handoff = (pathlib.Path(__file__).resolve().parent.parent / "assets" / "HANDOFF.md").read_text(
-            encoding="utf-8"
-        )
-        self.assertEqual(_detect_kind(handoff), "handoff")
+        self.assertEqual(_detect_kind(_HANDOFF_TEXT), "handoff")
+
+    def test_untitled_handoff_still_outscores_the_fourth_candidate(self):
+        # The titled assertion above returns from the title map before any
+        # score is computed. This one exercises the scoring path, where the
+        # fourth candidate competes with the handoff candidate.
+        self.assertEqual(_detect_kind(_untitled(_HANDOFF_TEXT)), "handoff")
 
 
 class AuthorityProvenanceTests(unittest.TestCase):
@@ -308,6 +340,113 @@ class ProtocolV05DocumentationTests(unittest.TestCase):
         skill = (self.ROOT / "SKILL.md").read_text(encoding="utf-8")
         rules = skill.split("## Non-negotiable rules", 1)[1].split("\n## ", 1)[0]
         self.assertIn("Relayed authority is not authority", rules)
+
+
+class ReviewRepairTests(unittest.TestCase):
+    """Regressions for the findings of the independent review at 075ad5a."""
+
+    ROOT = _REPO_ROOT
+
+    def test_conveyed_grant_is_checked_outside_briefs(self):
+        # R-04: rule 16 is not brief-specific. A handoff that claims an
+        # owner grant without citing it must be refused, not skipped.
+        handoff = _HANDOFF_TEXT.replace(
+            "- Source: <owner-grant | delegated-grant | orchestrator-judgment | none>",
+            "- Source: owner-grant",
+        ).replace(
+            "- Grantor: <who granted it; omit or `N/A` only when Source is "
+            "orchestrator-judgment or none>",
+            "- Grantor: N/A",
+        )
+        self.assertEqual(_detect_kind(handoff), "handoff")
+        self.assertTrue(
+            any(
+                "authority provenance source owner-grant requires a named grantor"
+                in error
+                for error in validate(handoff)
+            ),
+            validate(handoff),
+        )
+
+    def test_a_record_without_the_section_is_unaffected(self):
+        # The section stays optional for non-brief kinds, so records that were
+        # valid before the check became reachable stay valid.
+        without = _without_section(_HANDOFF_TEXT, "Authority provenance")
+        self.assertFalse(
+            [error for error in validate(without) if "authority provenance" in error]
+        )
+
+    def test_relayed_maturity_is_settled_in_the_owning_file(self):
+        # R-02: the maturity vocabulary is owned by evidence-protocol.md, and
+        # the subordinate/adopting split is stated there rather than only in
+        # the two documents that do not own it.
+        evidence = (self.ROOT / "references" / "evidence-protocol.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Maturity of a relayed or adopted claim", evidence)
+        delegation = (
+            self.ROOT / "references" / "orchestrated-delegation.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("Maturity of a relayed or adopted claim", delegation)
+        # The contradicted phrasing must not come back: it made maturity a
+        # function of who was reading the record.
+        for doc in (self.ROOT / "SKILL.md", self.ROOT / "references" / "orchestrated-delegation.md"):
+            self.assertNotIn(
+                "regardless of what the subordinate pass ran",
+                doc.read_text(encoding="utf-8"),
+            )
+
+    def test_parallel_mutation_rule_is_not_weakened_for_lanes(self):
+        # R-03: SKILL.md stated "unless disjointness is declared per lane"
+        # twelve lines below the owned rule requiring demonstrable disjointness.
+        skill = (self.ROOT / "SKILL.md").read_text(encoding="utf-8")
+        self.assertNotIn("unless disjointness is declared", skill)
+        section = skill.split("## Orchestrated delegation", 1)[1].split("\n## ", 1)[0]
+        self.assertIn("demonstrably disjoint", section)
+        delegation = (
+            self.ROOT / "references" / "orchestrated-delegation.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("demonstrably* disjoint", delegation)
+
+    def test_enforcement_claims_state_what_the_check_cannot_do(self):
+        # R-01: the durable record claimed the field made an ungranted
+        # extension impossible to record silently. A structural check cannot
+        # establish that a quotation is faithful.
+        provenance = (self.ROOT / "PROVENANCE.md").read_text(encoding="utf-8")
+        self.assertNotIn("impossible to record silently", provenance)
+        self.assertIn("cannot establish that the quoted scope is faithful", provenance)
+        readme = (self.ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertNotIn("validated, fail-closed field", readme)
+        self.assertIn("does not judge whether a quotation is faithful", readme)
+
+    def test_brief_minimum_carries_the_safety_bearing_fields(self):
+        # R-08 / R-15: rule 14 names assurance profile and configured bounds
+        # among the fields a runtime refuses a pass over rather than dropping.
+        # They were template prose the validator never required.
+        from scripts.validate_handoff import BRIEF_REQUIRED_HEADINGS
+
+        for heading in ("Mission mode", "Assurance profile", "Bounds"):
+            self.assertIn(heading, BRIEF_REQUIRED_HEADINGS)
+            self.assertIn(
+                f"missing heading: {heading}",
+                validate(_without_section(VALID_BRIEF, heading)),
+            )
+
+    def test_dropping_the_assurance_profile_no_longer_skips_its_enum_check(self):
+        # `_validate_enum_section` runs only over a section that exists, so an
+        # optional Assurance profile could be removed to skip its own check.
+        errors = validate(_without_section(VALID_BRIEF, "Assurance profile"))
+        self.assertIn("missing heading: Assurance profile", errors)
+
+    def test_vocabulary_registry_lists_authority_provenance(self):
+        # R-06: the registry that assigns each closed vocabulary an owning file
+        # said four while the revision added a fifth.
+        evidence = (self.ROOT / "references" / "evidence-protocol.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("Distinguishing the five vocabularies", evidence)
+        self.assertIn("| Authority provenance |", evidence)
+        self.assertIn("`orchestrated-delegation.md` |", evidence)
 
 
 # The main guard stays below every v0.5 test class so direct module execution

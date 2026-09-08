@@ -52,13 +52,21 @@ REVIEW_REQUIRED_HEADINGS = (
 # A delegation brief opens a subordinate pass under retained authority, so its
 # minimum differs from a handoff's: it must say where its authority came from,
 # what it may not record, and what proposal artifact comes back.
+# Rule 14 names mission anchor, mutation boundary, decision authority,
+# assurance profile and configured bounds as safety-bearing: a runtime that
+# cannot carry one refuses the pass rather than dropping it. A brief opens a
+# pass, so its minimum carries them. `Bounds` is the brief's carrier for cycle
+# identity and the bound the pass counts against.
 BRIEF_REQUIRED_HEADINGS = (
     "Mission",
+    "Mission mode",
     "Lane",
     "Authority provenance",
+    "Assurance profile",
     "Authoritative substrate",
     "Current immutable snapshot",
     "Mutation boundaries",
+    "Bounds",
     "Required deliverables",
     "Return contract",
     "Completion criteria",
@@ -522,20 +530,24 @@ _ABSENT_VALUES = {"", "n/a", "na", "none", "tbd", "unknown"}
 
 
 def _authority_provenance_errors(text: str) -> list[str]:
-    """Require a brief's conveyed authority to cite its own source.
+    """Require a record's conveyed authority to cite its own source.
 
     A subordinate pass cannot inspect the conversation its brief was written
-    in, so an asserted grant is unverifiable from inside the pass. Briefs
-    therefore fail closed: either the grant is cited, or the dispatching agent
-    records the scope as its own judgment. This checks structure only; it does
-    not authenticate a grantor or interpret whether the scope covers the task.
+    in, so an asserted grant is unverifiable from inside the pass. A record
+    conveying a grant therefore fails closed: either the grant is cited, or the
+    dispatching agent records the scope as its own judgment.
+
+    This checks structure only. It refuses a record that claims a grant while
+    leaving the grant fields absent or placeholder; it does not authenticate a
+    grantor, judge whether a quotation is faithful, or interpret whether the
+    scope covers the task. Those remain a reader's obligation.
     """
 
     section = "Authority provenance"
     source = _section_field_value(text, section, "Source:")
     if source is None or source.strip().lower() in {"", "n/a", "na"}:
         return [
-            "brief must declare an authority provenance source "
+            "record must declare an authority provenance source "
             "(owner-grant | delegated-grant | orchestrator-judgment | none)"
         ]
 
@@ -644,8 +656,14 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
         _validate_enum_section(text, "Mission mode", MISSION_MODES, errors)
         _validate_enum_section(text, "Assurance profile", ASSURANCE_PROFILES, errors)
 
-    if selected_kind == "brief":
+    # Rule 16 is not brief-specific: a handoff or review that conveys a grant
+    # must cite it too (SKILL.md, handoff content checklist). The section stays
+    # optional for those kinds so previously valid records remain valid, but it
+    # is checked wherever it appears.
+    if selected_kind == "brief" or "Authority provenance" in headings:
         errors.extend(_authority_provenance_errors(text))
+
+    if selected_kind == "brief":
         _validate_enum_section(text, "Mission mode", MISSION_MODES, errors)
         _validate_enum_section(text, "Assurance profile", ASSURANCE_PROFILES, errors)
 
