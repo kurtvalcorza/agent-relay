@@ -66,6 +66,12 @@ A holder of an authority MAY pre-authorize a repeating routine outward action un
 - the bound: expiry, count, or the mission-anchor revision it is bound to;
 - that anything outside the envelope still stops for the holder.
 
+A standing authorization is valid only where all three hold:
+
+- the authorizing actor is entitled to authorize that outward action. Holding a decision-authority class is not itself entitlement to authorize a repository, network, or other outward mutation; decision authority and mutation permission are independent axes.
+- the acting participant already holds matching mutation/action permission for that action under its current mutation boundary.
+- the envelope suppresses the repeated ask only. It never creates, widens, or restores a mutation boundary. Rule 3 holds here as it does for a role change or a handoff: a boundary stays immutable until the user explicitly revokes the restriction.
+
 Example:
 
 ```text
@@ -74,6 +80,16 @@ Action: push, then post the paced comment batch
 Condition: Windows suite green, Linux suite green, CI green
 Bound: this anchor revision
 Outside the envelope: stops for the user
+```
+
+Negative example — decision authority held, mutation permission absent:
+
+```text
+Authorized by: Integrator (holds architecture and readiness authority)
+Action: push the repair branch, then comment on the PR
+Acting participant's mutation boundary: repository read-only
+Result: invalid. The envelope cannot grant a write the boundary withholds.
+        The push stops for whoever may change the mutation boundary.
 ```
 
 A standing authorization removes a repeated ask for an already-authorized action. It does not change what must be true before the action is taken:
