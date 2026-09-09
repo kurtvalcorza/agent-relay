@@ -123,6 +123,7 @@ the first one built.
 A subordinate pass returns:
 
 - its result and the deliverable artifact the brief named;
+- its authority provenance, carrying the brief's declared source and grant citations unchanged;
 - its declared deviations — every place it processed less than, or other than, what the brief
   named, or `none`;
 - findings it opened outside its lane, reported and left unfixed;

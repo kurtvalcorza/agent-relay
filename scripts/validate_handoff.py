@@ -254,14 +254,33 @@ def _line_value(text: str, prefix: str) -> str | None:
     return None
 
 
-def _section_field_value(text: str, heading: str, prefix: str) -> str | None:
-    """Read a ``- Key: value`` field inside a Markdown section."""
+def _section_field_entries(text: str, heading: str, prefix: str) -> list[str]:
+    """Read all ``- Key: value`` or ``Key: value`` entries for a prefix inside a Markdown section."""
 
+    entries = []
     for line in _section_body(text, heading, strip_fences=True).splitlines():
         stripped = line.strip().lstrip("-*+ ").strip()
         if stripped.startswith(prefix):
-            return stripped[len(prefix):].strip()
-    return None
+            entries.append(stripped[len(prefix):].strip())
+    return entries
+
+
+def _section_field_value(text: str, heading: str, prefix: str) -> str | None:
+    """Read a ``- Key: value`` field inside a Markdown section."""
+
+    entries = _section_field_entries(text, heading, prefix)
+    return entries[0] if entries else None
+
+
+def _pass_field_entries(text: str, prefix: str) -> list[str]:
+    """Read all entries for a field in a pass record outside fences."""
+
+    entries = []
+    for line in _outside_fences(text):
+        stripped = line.strip().lstrip("-*+ ").strip()
+        if stripped.startswith(prefix):
+            entries.append(stripped[len(prefix):].strip())
+    return entries
 
 
 def _block_entries(text: str, prefix: str) -> list[str]:
@@ -585,7 +604,7 @@ _ABSENT_VALUES = {"", "n/a", "na", "none", "tbd", "unknown"}
 
 
 def _authority_provenance_errors(text: str) -> list[str]:
-    """Require a record's conveyed authority to cite its own source.
+    """Require a record's conveyed authority to cite its own source without ambiguity.
 
     A subordinate pass cannot inspect the conversation its brief was written
     in, so an asserted grant is unverifiable from inside the pass. A record
@@ -598,35 +617,108 @@ def _authority_provenance_errors(text: str) -> list[str]:
     interpret whether the scope covers the task. Those remain a reader's
     obligation. The `<...>` template-placeholder refusal is a separate
     document-wide check in `validate`, not part of this one.
+
+    Duplicate fields within Authority provenance are rejected so that a later
+    or earlier declaration cannot mask missing grant requirements or create
+    first-match-wins ambiguity.
     """
 
     section = "Authority provenance"
-    source = _section_field_value(text, section, "Source:")
-    if source is None or source.strip().lower() in {"", "n/a", "na"}:
+    errors: list[str] = []
+    source_entries = _section_field_entries(text, section, "Source:")
+
+    if len(source_entries) > 1:
+        errors.append(
+            "duplicate authority provenance field: Source: (must appear exactly once)"
+        )
+    elif not source_entries or source_entries[0].strip().lower() in {"", "n/a", "na"}:
         return [
             "record must declare an authority provenance source "
             "(owner-grant | delegated-grant | orchestrator-judgment | none)"
         ]
 
-    normalized = source.strip().lower().replace("-", "_")
-    if normalized not in AUTHORITY_SOURCES:
-        return [f"invalid authority provenance source: {source}"]
-    if normalized not in GRANT_BEARING_SOURCES:
-        return []
+    for source in source_entries:
+        normalized = source.strip().lower().replace("-", "_")
+        if normalized not in AUTHORITY_SOURCES:
+            errors.append(f"invalid authority provenance source: {source}")
 
-    errors: list[str] = []
+    is_grant_bearing = any(
+        s.strip().lower().replace("-", "_") in GRANT_BEARING_SOURCES
+        for s in source_entries
+    )
+
     for prefix, requirement in (
         ("Grantor:", "a named grantor"),
         ("Granted scope (verbatim):", "the granted scope quoted verbatim"),
         ("Granted at:", "when or against what state it was granted"),
     ):
-        value = _section_field_value(text, section, prefix)
-        if value is None or value.strip().lower().strip(".") in _ABSENT_VALUES:
+        entries = _section_field_entries(text, section, prefix)
+        if len(entries) > 1:
             errors.append(
-                f"authority provenance source {source} requires {requirement} "
-                f"({prefix.rstrip(':')}); record orchestrator-judgment instead "
-                "when the grant cannot be cited"
+                f"duplicate authority provenance field: {prefix} (must appear exactly once)"
             )
+        elif is_grant_bearing:
+            if not entries or entries[0].strip().lower().strip(".") in _ABSENT_VALUES:
+                source_label = source_entries[0] if source_entries else "grant"
+                errors.append(
+                    f"authority provenance source {source_label} requires {requirement} "
+                    f"({prefix.rstrip(':')}); record orchestrator-judgment instead "
+                    "when the grant cannot be cited"
+                )
+
+    return errors
+
+
+def _pass_authority_provenance_errors(text: str) -> list[str]:
+    """Validate optional safety-bearing authority provenance on pass records.
+
+    A subordinate pass carrying authority provenance must declare a valid closed
+    vocabulary source and cite its grant when grant-bearing. Duplicate authority
+    fields are rejected to maintain fail-closed continuity.
+    """
+
+    auth_entries = _pass_field_entries(text, "Authority provenance:")
+    if not auth_entries:
+        return []
+
+    errors: list[str] = []
+    if len(auth_entries) > 1:
+        errors.append(
+            "duplicate pass field: Authority provenance: (must appear at most once)"
+        )
+    elif not auth_entries[0] or auth_entries[0].strip().lower() in {"", "n/a", "na"}:
+        errors.append(
+            "pass must declare an authority provenance source "
+            "(owner-grant | delegated-grant | orchestrator-judgment | none)"
+        )
+
+    for source in auth_entries:
+        normalized = source.strip().lower().replace("-", "_")
+        if normalized not in AUTHORITY_SOURCES:
+            errors.append(f"invalid authority provenance source: {source}")
+
+    is_grant_bearing = any(
+        s.strip().lower().replace("-", "_") in GRANT_BEARING_SOURCES
+        for s in auth_entries
+    )
+
+    for prefix, requirement in (
+        ("Grantor:", "a named grantor"),
+        ("Granted scope (verbatim):", "the granted scope quoted verbatim"),
+        ("Granted at:", "when or against what state it was granted"),
+    ):
+        entries = _pass_field_entries(text, prefix)
+        if len(entries) > 1:
+            errors.append(f"duplicate pass field: {prefix} (must appear at most once)")
+        elif is_grant_bearing:
+            if not entries or entries[0].strip().lower().strip(".") in _ABSENT_VALUES:
+                source_label = auth_entries[0] if auth_entries else "grant"
+                errors.append(
+                    f"authority provenance source {source_label} requires {requirement} "
+                    f"({prefix.rstrip(':')}); record orchestrator-judgment instead "
+                    "when the grant cannot be cited"
+                )
+
     return errors
 
 
@@ -782,6 +874,7 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
                 )
 
         errors.extend(_pass_cycle_continuity_errors(text))
+        errors.extend(_pass_authority_provenance_errors(text))
 
     if _PLACEHOLDER_RE.search(text):
         errors.append("template placeholders appear to remain unfilled")

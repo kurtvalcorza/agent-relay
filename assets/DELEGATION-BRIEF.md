@@ -80,6 +80,7 @@ scope extension.>
 - Non-reproduction is a valid result: <state whether a finding failing to reproduce should be reported rather than repaired>
 - Residual risk and environment-specific gaps: <expected disclosures>
 - Claim maturity ceiling: <the highest maturity this pass may record in its own return, e.g. EXECUTED. The dispatching agent still holds an adopted claim at `ASSERTED` until it inspects the evidence cited here.>
+- Authority provenance: <must carry the declared source (owner-grant | delegated-grant | orchestrator-judgment | none) and grant citations from this brief unchanged>
 
 ## Completion criteria
 - <criterion>
