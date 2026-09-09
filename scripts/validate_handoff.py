@@ -52,13 +52,14 @@ REVIEW_REQUIRED_HEADINGS = (
 # A delegation brief opens a subordinate pass under retained authority, so its
 # minimum differs from a handoff's: it must say where its authority came from,
 # what it may not record, and what proposal artifact comes back.
-# Rule 14 names mission anchor, mutation boundary, decision authority,
-# assurance profile and configured bounds as safety-bearing. A brief opens a
-# pass, so its minimum carries the three it can: the mutation boundary, the
-# assurance profile, and `Bounds` — the brief's carrier for cycle identity and
-# the bound the pass counts against. `Mission mode` is required alongside them
+# Rule 14 names source identity, mission anchor, mutation boundary, decision
+# authority, assurance profile and configured bounds as safety-bearing. A brief
+# opens a pass, so its minimum carries four of the six: source identity as
+# `Authoritative substrate` plus `Current immutable snapshot`, the mutation
+# boundary, the assurance profile, and `Bounds` — the brief's carrier for cycle
+# identity and the bound the pass counts against. `Mission mode` is required alongside them
 # because the brief declares one and an unvalidated mode is a silent default.
-# Mission anchor and decision authority have no brief section yet: the brief
+# Mission anchor and decision authority are the two it does not carry: the brief
 # runs under the dispatching agent's retained authority, and whether it should
 # carry its own envelope is an open design question rather than an omission
 # this minimum settles.
@@ -350,12 +351,39 @@ def _empty_section_errors(text: str, headings: tuple[str, ...]) -> list[str]:
     empty body drops the field just as effectively (`_validate_enum_section`
     returns early on one). Rule 14 refuses a pass over a safety-bearing field
     rather than dropping it, so for those sections presence is not enough.
+
+    Fences are stripped for the same reason they are stripped elsewhere: an
+    example inside a fenced block must not satisfy the durable record's own
+    requirement.
     """
 
     return [
         f"section is present but empty: {heading}"
         for heading in headings
-        if heading in _headings(text) and not _section_body(text, heading).strip()
+        if heading in _headings(text)
+        and not _section_body(text, heading, strip_fences=True).strip()
+    ]
+
+
+def _bounds_content_errors(text: str) -> list[str]:
+    """Require a brief's `Bounds` section to name a cycle and a bound.
+
+    Emptying is not the only way to drop a field. `Mission mode` and
+    `Assurance profile` are backstopped by their enum checks, so a token body
+    fails there; `Bounds` has no enum, and without this a lone `-` satisfies
+    it. Configured bounds are safety-bearing under rule 14.
+    """
+
+    if "Bounds" not in _headings(text):
+        return []
+    body = _section_body(text, "Bounds", strip_fences=True)
+    return [
+        f"bounds section must name {requirement} ({prefix.rstrip(':')})"
+        for prefix, requirement in (
+            ("Cycle ID:", "the cycle this pass belongs to, or `N/A`"),
+            ("Pass bound:", "the bound this pass counts against"),
+        )
+        if not any(line.strip().lstrip("-*+ ").startswith(prefix) for line in body.splitlines())
     ]
 
 
@@ -565,9 +593,11 @@ def _authority_provenance_errors(text: str) -> list[str]:
     dispatching agent records the scope as its own judgment.
 
     This checks structure only. It refuses a record that claims a grant while
-    leaving the grant fields absent or placeholder; it does not authenticate a
-    grantor, judge whether a quotation is faithful, or interpret whether the
-    scope covers the task. Those remain a reader's obligation.
+    leaving the grant fields empty or set to an `_ABSENT_VALUES` token; it does
+    not authenticate a grantor, judge whether a quotation is faithful, or
+    interpret whether the scope covers the task. Those remain a reader's
+    obligation. The `<...>` template-placeholder refusal is a separate
+    document-wide check in `validate`, not part of this one.
     """
 
     section = "Authority provenance"
@@ -697,6 +727,7 @@ def validate(text: str, *, kind: str = "auto") -> list[str]:
 
     if selected_kind == "brief":
         errors.extend(_empty_section_errors(text, BRIEF_NON_EMPTY_SECTIONS))
+        errors.extend(_bounds_content_errors(text))
         _validate_enum_section(text, "Mission mode", MISSION_MODES, errors)
         _validate_enum_section(text, "Assurance profile", ASSURANCE_PROFILES, errors)
 

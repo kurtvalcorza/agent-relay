@@ -109,6 +109,24 @@ def _with_empty_section(text: str, heading: str) -> str:
     return "\n".join(lines[: start + 1] + [""] + lines[end:])
 
 
+def _with_section_body(text: str, heading: str, body: str) -> str:
+    """Replace one `##` section's body, keeping the heading."""
+
+    lines = text.splitlines()
+    start = next(
+        index for index, line in enumerate(lines) if line.strip() == f"## {heading}"
+    )
+    end = next(
+        (
+            index
+            for index in range(start + 1, len(lines))
+            if lines[index].startswith("## ")
+        ),
+        len(lines),
+    )
+    return "\n".join(lines[: start + 1] + body.split("\n") + [""] + lines[end:])
+
+
 def _untitled(text: str) -> str:
     """Drop the top-level title so detection must fall through to scoring."""
 
@@ -419,7 +437,10 @@ class ReviewRepairTests(unittest.TestCase):
     def _words(text):
         """Compare on words, so emphasis markers and wrapping do not matter."""
 
-        return " ".join(re.sub(r"[*_`]", "", text).split())
+        # Only emphasis and code markers. Stripping `_` too would silently
+        # mangle every underscored protocol token (BOUND_EXHAUSTED,
+        # owner_grant), so an assertion on one could never match.
+        return " ".join(re.sub(r"[*`]", "", text).split())
 
     def test_parallel_mutation_rule_is_not_weakened_for_lanes(self):
         # R-03: SKILL.md stated "unless disjointness is declared per lane"
@@ -428,10 +449,22 @@ class ReviewRepairTests(unittest.TestCase):
         self.assertNotIn("unless disjointness is declared", skill)
         section = skill.split("## Orchestrated delegation", 1)[1].split("\n## ", 1)[0]
         self.assertIn("demonstrably disjoint", self._words(section))
-        delegation = (
-            self.ROOT / "references" / "orchestrated-delegation.md"
-        ).read_text(encoding="utf-8")
-        self.assertIn("demonstrably disjoint", self._words(delegation))
+        delegation = self._words(
+            (self.ROOT / "references" / "orchestrated-delegation.md").read_text(
+                encoding="utf-8"
+            )
+        )
+        # Anchor on the normative sentence, not on the file: the citation of
+        # the owned rule higher up also contains "demonstrably disjoint", so a
+        # bare substring check passes while this sentence is weakened.
+        self.assertIn(
+            "those surfaces must be demonstrably disjoint under the coordination "
+            "scope's comparison rule",
+            delegation,
+        )
+        # And the derived README summary, which drifted once already.
+        readme = self._words((self.ROOT / "README.md").read_text(encoding="utf-8"))
+        self.assertIn("requires demonstrably disjoint mutation surfaces", readme)
 
     def test_the_owned_parallel_mutation_rule_keeps_its_qualifier(self):
         # OL-1 from the repair review: the repair protected the derived
@@ -466,8 +499,7 @@ class ReviewRepairTests(unittest.TestCase):
             (self.ROOT / "PROVENANCE.md").read_text(encoding="utf-8")
         )
         self.assertNotIn("impossible to record silently", provenance)
-        self.assertIn("cannot establish", provenance)
-        self.assertIn("faithful", provenance)
+        self.assertIn("cannot establish that the quoted scope is faithful", provenance)
         readme = self._words((self.ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertNotIn("validated, fail-closed field", readme)
         # Anchor on the disclaimer being made, not on its exact wording.
@@ -546,6 +578,67 @@ class ReviewRepairTests(unittest.TestCase):
         self.assertFalse(
             [error for error in validate(emptied) if "present but empty" in error]
         )
+
+    def test_the_words_helper_preserves_protocol_tokens(self):
+        # N-09: stripping `_` alongside the emphasis markers would silently
+        # mangle every underscored token, so an assertion on one could never
+        # match and an assertNotIn on one could never fail.
+        self.assertEqual(self._words("`BOUND_EXHAUSTED`"), "BOUND_EXHAUSTED")
+        self.assertEqual(self._words("*owner_grant*"), "owner_grant")
+        self.assertEqual(self._words("**bold**  wrapped\ntext"), "bold wrapped text")
+
+    def test_the_adopted_claim_floor_stays_conditional(self):
+        # N-06/F-03: the flat "stays at EXECUTED" floor could be restored
+        # verbatim with the suite green, and read literally it licensed
+        # `EXECUTED` for an agent that had run nothing.
+        evidence = self._words(
+            (self.ROOT / "references" / "evidence-protocol.md").read_text(
+                encoding="utf-8"
+            )
+        )
+        self.assertIn(
+            "the claim stays at the maturity the adopting agent's own evidence "
+            "supports",
+            evidence,
+        )
+        self.assertNotIn("the claim stays at EXECUTED with the reason recorded", evidence)
+
+    def test_the_check_bound_is_described_accurately(self):
+        # N-01/F-02: this text has now been wrong in three successive rounds,
+        # each time describing a different set than `_ABSENT_VALUES` holds.
+        from scripts.validate_handoff import _ABSENT_VALUES
+
+        named = {token for token in _ABSENT_VALUES if token}
+        for document in ("PROVENANCE.md", "README.md"):
+            words = self._words((self.ROOT / document).read_text(encoding="utf-8"))
+            self.assertNotIn("absent or placeholder", words)
+            for token in named:
+                self.assertIn(
+                    token,
+                    words.lower(),
+                    f"{document} does not name the absence token {token!r}",
+                )
+
+    def test_bounds_cannot_be_reduced_to_a_token(self):
+        # N-03: emptying is not the only way to drop a field. `Mission mode`
+        # and `Assurance profile` are backstopped by their enum checks;
+        # `Bounds` had nothing.
+        for body in ("-", "---", ".", "### Details"):
+            reduced = _with_section_body(VALID_BRIEF, "Bounds", body)
+            self.assertTrue(
+                [error for error in validate(reduced) if "bounds section" in error],
+                f"{body!r} satisfied the Bounds requirement",
+            )
+
+    def test_a_fenced_example_cannot_satisfy_a_required_section(self):
+        # N-03: `_section_body` blanks fences precisely so example structure
+        # cannot satisfy the record's own requirement; the empty-section check
+        # was not asking for that.
+        fenced = _with_section_body(
+            VALID_BRIEF, "Bounds", "```\n- Cycle ID: C-1\n- Pass bound: 1 of 3\n```"
+        )
+        errors = validate(fenced)
+        self.assertIn("section is present but empty: Bounds", errors)
 
     def test_vocabulary_registry_lists_authority_provenance(self):
         # R-06: the registry that assigns each closed vocabulary an owning file
