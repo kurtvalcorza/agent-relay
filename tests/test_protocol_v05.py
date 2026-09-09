@@ -579,6 +579,21 @@ class ReviewRepairTests(unittest.TestCase):
             [error for error in validate(emptied) if "present but empty" in error]
         )
 
+    def test_the_delegated_return_ceiling_points_at_the_relay_rule(self):
+        # Two sections of this file now describe the maturity of a delegated
+        # return: the artifact-first bullet (from the cost-aware delegation
+        # change) and the relayed-claim subsection. R-02 was raised because two
+        # documents described maturity without pointing at each other.
+        evidence = self._words(
+            (self.ROOT / "references" / "evidence-protocol.md").read_text(
+                encoding="utf-8"
+            )
+        )
+        bullet = evidence.split("An accurate return is still at most", 1)[1].split(
+            "See [", 1
+        )[0]
+        self.assertIn("Maturity of a relayed or adopted claim", bullet)
+
     def test_the_words_helper_preserves_protocol_tokens(self):
         # N-09: stripping `_` alongside the emphasis markers would silently
         # mangle every underscored token, so an assertion on one could never

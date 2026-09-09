@@ -13,7 +13,7 @@ Prefer evidence in roughly this order when applicable:
 
 Lower-ranked evidence may still be sufficient when higher-ranked evidence is impossible, but state the limitation.
 
-A delegated pass SHOULD return a machine-checkable artifact — counts, exit codes, immutable revisions, digests, log paths — in a schema its execution packet declared in advance, so verification is a comparison against the referenced evidence rather than a re-reading of prose. An accurate return is still at most `EXECUTED`. See [`cost-aware-delegation.md`](cost-aware-delegation.md).
+A delegated pass SHOULD return a machine-checkable artifact — counts, exit codes, immutable revisions, digests, log paths — in a schema its execution packet declared in advance, so verification is a comparison against the referenced evidence rather than a re-reading of prose. An accurate return is still at most `EXECUTED`, and that ceiling is on the delegated pass's own record: relaying it does not transfer the token to whoever reads it (see § Maturity of a relayed or adopted claim). See [`cost-aware-delegation.md`](cost-aware-delegation.md).
 
 Agent identity, model identity, provider identity, or a provenance footer does not change this hierarchy. Attribution records who or what produced a claim; it does not make the claim stronger evidence.
 
