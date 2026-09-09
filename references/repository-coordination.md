@@ -56,6 +56,10 @@ Before requesting the external review:
 - preserve mutation and decision-authority boundaries;
 - record what the external reviewer is expected to assess when the review scope is narrower than a normal implementation review.
 
+When the named PR is one layer of a stack, the handoff SHOULD include a stack note: the layer map and this PR's position in it. An external reviewer that grades each PR in isolation cannot see the stack unless the handoff carries it. Where the reviewer cannot accept that context, pair the isolated external pass with a stack-aware Reviewer pass rather than treating the isolated result as full coverage.
+
+A finding whose subject was superseded by a later layer closes as `FIXED` naming the owning layer and the fixing revision, recorded once. A subsequent isolated external pass that re-raises the same item on an unchanged file is that finding re-observed, not a new one: point at the recorded disposition instead of re-answering it each pass.
+
 The external reviewer receives review-recording authority only to the extent supported by the named PR's review channel. A review handoff does **not** authorize the external reviewer, the handing-off agent, or a later receiving agent to merge, push fixes, resolve threads, approve on the user's behalf, release, or otherwise broaden mutation/decision authority.
 
 Do not automatically merge after requesting an external review. Review handoff and merge are separate actions; merge requires its own authority and readiness decision.
@@ -87,6 +91,8 @@ For a stack such as:
 `PR5 -> PR4 -> PR3 -> PR2 -> PR1 -> main`
 
 apply fixes to the earliest layer that normatively owns the behavior.
+
+Layers are not disjoint mutation surfaces even when their changed-file sets are disjoint, because merge-forward makes each lower layer's change part of every upper layer's surface. Under [`runtime-adapters.md`](runtime-adapters.md) § Parallel mutation surfaces such surfaces are overlapping, so builders across layers serialize: bottom-up, one layer at a time, each in an isolated working copy, with an explicit merge-forward step between layers. See [`cost-aware-delegation.md`](cost-aware-delegation.md).
 
 Then propagate/restack forward and verify actual ancestry. Do not merely copy equivalent files into higher branches while leaving stale ancestry.
 
