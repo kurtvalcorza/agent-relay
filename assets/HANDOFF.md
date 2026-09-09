@@ -33,6 +33,13 @@
 - Evidence: <holder>
 - Readiness: <holder>
 
+## Authority provenance
+<Required only when this handoff conveys a grant. Record `Source: none` when the handoff conveys no authority, or delete this whole section: a section that is present is validated, and an empty one is an error.>
+- Source: <owner-grant | delegated-grant | orchestrator-judgment | none>
+- Grantor: <who granted it; omit or `N/A` only when Source is orchestrator-judgment or none>
+- Granted scope (verbatim): <the granted scope quoted, not paraphrased>
+- Granted at: <when, or against what state, it was granted>
+
 ## Assurance profile
 <exploratory | standard | consequential | N/A>
 

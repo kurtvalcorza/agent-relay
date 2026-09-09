@@ -13,7 +13,7 @@ Prefer evidence in roughly this order when applicable:
 
 Lower-ranked evidence may still be sufficient when higher-ranked evidence is impossible, but state the limitation.
 
-A delegated pass SHOULD return a machine-checkable artifact — counts, exit codes, immutable revisions, digests, log paths — in a schema its execution packet declared in advance, so verification is a comparison against the referenced evidence rather than a re-reading of prose. An accurate return is still at most `EXECUTED`. See [`cost-aware-delegation.md`](cost-aware-delegation.md).
+A delegated pass SHOULD return a machine-checkable artifact — counts, exit codes, immutable revisions, digests, log paths — in a schema its execution packet declared in advance, so verification is a comparison against the referenced evidence rather than a re-reading of prose. An accurate return is still at most `EXECUTED`, and that ceiling is on the delegated pass's own record: relaying it does not transfer the token to whoever reads it (see § Maturity of a relayed or adopted claim). See [`cost-aware-delegation.md`](cost-aware-delegation.md).
 
 Agent identity, model identity, provider identity, or a provenance footer does not change this hierarchy. Attribution records who or what produced a claim; it does not make the claim stronger evidence.
 
@@ -35,6 +35,14 @@ A maturity statement should remain bound to the claim, verification contract, so
 Only Verifier behavior promotes a consequential claim to `VERIFIED`. An Integrator may reuse adequate current `VERIFIED` evidence without manufacturing another verification pass, but must still make the separate readiness decision.
 
 `VERIFIED` for one claim does not imply that the whole artifact is ready, mergeable, released, deployed, or approved.
+
+### Maturity of a relayed or adopted claim
+
+Maturity is bound to the claim, verification contract, snapshot, and environment. It is not relative to whoever is holding the record. A pass therefore records the maturity its own evidence supports, and relaying that record does not transfer the token.
+
+For an agent receiving another pass's record, the token in that record is an `ASSERTED` claim *about* maturity until the receiving agent inspects the evidence the record cites. After inspecting it, the receiving agent records the maturity its own inspection supports. Adoption does not downgrade the originating record, and it does not let the adopting agent skip a step: the subordinate record keeps saying what its own evidence established, and the adopting agent may not reuse that token before inspecting what it stands on.
+
+Adopting another agent's result makes its claim the adopting agent's own. For a consequential repair, the adopting agent MUST re-derive the discriminating control itself rather than accept a report of it: restore the pre-fix state of the changed surface with the new control in place, observe the expected failure, restore the fix, and observe the expected pass. Re-running the other agent's own script is not re-derivation where that script is what is being audited. Where re-derivation is impracticable, the claim stays at the maturity the adopting agent's own evidence supports — `EXECUTED` where it ran the behavior itself, `INSPECTED` where it only read the evidence — with the reason recorded, and it is not presented as independently verified.
 
 ## Assurance profiles
 
@@ -216,9 +224,9 @@ open-findings section therefore continues to list `OPEN`, `DEFERRED`, and
 
 Avoid indefinite conversational debate.
 
-### Distinguishing the four vocabularies
+### Distinguishing the five vocabularies
 
-Four axes use overlapping words. A single record can carry all of them at once,
+Five axes use overlapping words. A single record can carry all of them at once,
 so read each token against its own field:
 
 | Axis | Values | Owner |
@@ -227,6 +235,7 @@ so read each token against its own field:
 | Claim maturity | `ASSERTED`, `INSPECTED`, `EXECUTED`, `VERIFIED` | this file |
 | Pass execution status | `RAN`, `FAILED`, `SKIPPED` | `iterative-review.md` |
 | Cycle termination reason | `NO_NEW_FINDINGS`, `BOUND_EXHAUSTED`, `BLOCKED`, `CANCELLED` | `iterative-review.md` |
+| Authority provenance | `owner-grant`, `delegated-grant`, `orchestrator-judgment`, `none` | `orchestrated-delegation.md` |
 
 `BLOCKED` appears deliberately in two of them and means different things: a
 **finding** is `BLOCKED` when that defect cannot be established or repaired; a

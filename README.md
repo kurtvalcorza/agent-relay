@@ -82,7 +82,7 @@ Agent Relay **v0.4.0** adds semantics around the five existing roles rather than
 - **Bounded iterative review** records planned versus executed passes, finding continuity, explicit budgets, and termination without treating `NO_NEW_FINDINGS` as readiness.
 - **Runtime adapter contracts** are versioned separately from `agent-relay-v1` and fail closed when an adapter cannot honor safety-bearing fields.
 - **Cold-start resumability** makes a substantive handoff reconstructible from durable state without requiring shared conversation history.
-- **Parallel mutation safety** requires disjoint mutation surfaces or declared safe multi-writer semantics; otherwise execution serializes or refuses.
+- **Parallel mutation safety** requires demonstrably disjoint mutation surfaces or declared safe multi-writer semantics; otherwise execution serializes or refuses.
 - **Stagnation** is a routing signal for changing decision function/lens/environment, not a third lifecycle state.
 
 The design principle is simple:
@@ -90,6 +90,24 @@ The design principle is simple:
 > **Execution autonomy does not imply planning authority, and runtime completion does not imply verified success.**
 
 See [`references/decision-authority.md`](references/decision-authority.md), [`references/evidence-protocol.md`](references/evidence-protocol.md), [`references/mission-modes.md`](references/mission-modes.md), [`references/iterative-review.md`](references/iterative-review.md), [`references/runtime-adapters.md`](references/runtime-adapters.md), and [`references/stagnation-escalation.md`](references/stagnation-escalation.md).
+
+## v0.5: orchestrated delegation
+
+Agent Relay **v0.5.0** covers the case where one agent dispatches subordinate agent passes instead of handing work to a peer. It adds no roles: an orchestrator is an `Integrator` in mission mode `orchestrate`.
+
+- **Delegation briefs** open a bounded subordinate pass under retained authority. A brief is not a handoff — the dispatching agent stays the acting agent for the shared substrate. See [`assets/DELEGATION-BRIEF.md`](assets/DELEGATION-BRIEF.md).
+- **Authority provenance** is a validated field that fails closed on absence. `owner-grant` and `delegated-grant` must name the grantor, quote the granted scope verbatim, and cite when it was granted; a grant that cannot be quoted is recorded as `orchestrator-judgment`. The check is structural — it refuses a claimed grant whose fields are empty or one of a small set of absence tokens (`N/A`, `NA`, `none`, `TBD`, `unknown`), and does not judge whether a quotation is faithful or a grantor is a principal. A subordinate pass cannot inspect the conversation its brief was written in, so an unciteable grant is unverifiable from inside the pass.
+- **Single-writer integration** gives subordinate passes no mutation surface on the shared substrate by default: they return proposals, the dispatching agent commits them, and recording channels stay forbidden.
+- **Centrally owned derived claims** keep counts, totals, and coverage figures with the single writer, since a claim computed over the whole is stale wherever a lane has changed part of it.
+- **Return contracts** require declared deviations, and an adopted result stays `ASSERTED` in the dispatching agent's hands until it inspects the evidence the record cites. The subordinate record keeps the maturity its own evidence supports; relaying it does not transfer the token.
+- **Re-derivation on adoption** requires the adopting agent to reproduce the discriminating control itself before presenting another agent's consequential repair as verified.
+- **Lane sizing** is by kind of work, not volume: repeated application of one method batches inside a single pass.
+
+The design principle extends the v0.4 one:
+
+> **A relayed statement about authority is not authority, and adopting another agent's result makes its claim yours.**
+
+See [`references/orchestrated-delegation.md`](references/orchestrated-delegation.md).
 
 ## Automatic role routing
 
@@ -322,11 +340,13 @@ agent-relay/
 │   ├── runtime-adapters.md
 │   ├── stagnation-escalation.md
 │   ├── local-execution.md
+│   ├── orchestrated-delegation.md
 │   └── repository-coordination.md
 ├── assets/
 │   ├── HANDOFF.md
 │   ├── REVIEW.md
-│   └── AGENT-PASS.md
+│   ├── AGENT-PASS.md
+│   └── DELEGATION-BRIEF.md
 ├── scripts/
 │   ├── infer_role.py
 │   └── validate_handoff.py
@@ -334,7 +354,8 @@ agent-relay/
     ├── __init__.py
     ├── test_infer_role.py
     ├── test_validate_handoff.py
-    └── test_protocol_v04.py
+    ├── test_protocol_v04.py
+    └── test_protocol_v05.py
 ```
 
 ## Reference role router
@@ -442,7 +463,7 @@ Agent Relay aims to remain **agent-agnostic, tool-agnostic, role-based, evidence
 
 ## Version
 
-Current skill version: **0.4.0**  
+Current skill version: **0.5.0**  
 Protocol identifier: **`agent-relay-v1`**
 
 ## License
