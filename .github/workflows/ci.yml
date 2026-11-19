@@ -32,6 +32,12 @@ jobs:
       - run: python -m unittest discover -s tests -t . -v
       # Regression for PR #12: the main guard must remain below every v0.4 test
       # class so direct module execution cannot silently skip later tests.
+      # PYTHONPATH=. keeps `-m tests.*` resolvable when the runner sets
+      # PYTHONSAFEPATH=1, which drops the implicit cwd entry from sys.path.
       - run: python -m tests.test_protocol_v04
+        env:
+          PYTHONPATH: .
       # Same guard-placement regression for the v0.5 module.
       - run: python -m tests.test_protocol_v05
+        env:
+          PYTHONPATH: .
