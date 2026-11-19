@@ -272,6 +272,48 @@ def _section_field_value(text: str, heading: str, prefix: str) -> str | None:
     return entries[0] if entries else None
 
 
+# Fields are parsed as plain text. Inline Markdown emphasis on a key or value
+# (`**Source:**`, `Source: **owner-grant**`, `_x_`, `__x__`) is deliberately not
+# stripped: the field still fails closed. These helpers only let a refusal name
+# the emphasis as its cause instead of reporting a bare invalid or missing field.
+_EMPHASIS_HINT = (
+    "inline Markdown emphasis (`*`, `_`, `**`, `__`) is not parsed in record "
+    "fields; write the key and value as plain text"
+)
+_EMPHASIS_IN_VALUE = re.compile(r"^[*_]|[*_]$|\*\*|__")
+
+
+def _has_inline_emphasis(value: str) -> bool:
+    """Return whether a parsed field value carries inline Markdown emphasis markers."""
+
+    return bool(_EMPHASIS_IN_VALUE.search(value.strip()))
+
+
+def _emphasized_key_present(lines: list[str], prefix: str) -> bool:
+    """Return whether a key matches ``prefix`` only once emphasis markers are removed."""
+
+    for line in lines:
+        stripped = line.strip().lstrip("-*+ ").strip()
+        if stripped.startswith(prefix):
+            continue
+        if re.sub(r"[*_]", "", line).strip().lstrip("-+ ").strip().startswith(prefix):
+            return True
+    return False
+
+
+def _section_emphasized_key(text: str, heading: str, prefix: str) -> bool:
+    lines = _section_body(text, heading, strip_fences=True).splitlines()
+    return _emphasized_key_present(lines, prefix)
+
+
+def _pass_emphasized_key(text: str, prefix: str) -> bool:
+    return _emphasized_key_present(_outside_fences(text), prefix)
+
+
+def _with_emphasis_hint(message: str, value: str) -> str:
+    return f"{message} ({_EMPHASIS_HINT})" if _has_inline_emphasis(value) else message
+
+
 def _pass_field_entries(text: str, prefix: str) -> list[str]:
     """Read all entries for a field in a pass record outside fences."""
 
@@ -360,7 +402,9 @@ def _validate_section_field(
         return
     normalized = value.lower().replace("-", "_")
     if normalized not in allowed:
-        errors.append(f"invalid {prefix.rstrip(':').lower()}: {value}")
+        errors.append(
+            _with_emphasis_hint(f"invalid {prefix.rstrip(':').lower()}: {value}", value)
+        )
 
 
 def _empty_section_errors(text: str, headings: tuple[str, ...]) -> list[str]:
@@ -632,15 +676,20 @@ def _authority_provenance_errors(text: str) -> list[str]:
             "duplicate authority provenance field: Source: (must appear exactly once)"
         )
     elif not source_entries or source_entries[0].strip().lower() in {"", "n/a", "na"}:
-        return [
+        message = (
             "record must declare an authority provenance source "
             "(owner-grant | delegated-grant | orchestrator-judgment | none)"
-        ]
+        )
+        if not source_entries and _section_emphasized_key(text, section, "Source:"):
+            message += f"; a Source: field was found but {_EMPHASIS_HINT}"
+        return [message]
 
     for source in source_entries:
         normalized = source.strip().lower().replace("-", "_")
         if normalized not in AUTHORITY_SOURCES:
-            errors.append(f"invalid authority provenance source: {source}")
+            errors.append(
+                _with_emphasis_hint(f"invalid authority provenance source: {source}", source)
+            )
 
     is_grant_bearing = any(
         s.strip().lower().replace("-", "_") in GRANT_BEARING_SOURCES
@@ -660,11 +709,14 @@ def _authority_provenance_errors(text: str) -> list[str]:
         elif is_grant_bearing:
             if not entries or entries[0].strip().lower().strip(".") in _ABSENT_VALUES:
                 source_label = source_entries[0] if source_entries else "grant"
-                errors.append(
+                message = (
                     f"authority provenance source {source_label} requires {requirement} "
                     f"({prefix.rstrip(':')}); record orchestrator-judgment instead "
                     "when the grant cannot be cited"
                 )
+                if not entries and _section_emphasized_key(text, section, prefix):
+                    message += f"; a {prefix} field was found but {_EMPHASIS_HINT}"
+                errors.append(message)
 
     return errors
 
@@ -679,6 +731,8 @@ def _pass_authority_provenance_errors(text: str) -> list[str]:
 
     auth_entries = _pass_field_entries(text, "Authority provenance:")
     if not auth_entries:
+        # An emphasized `__Authority provenance:__` key is not parsed. The field
+        # is optional on pass records, so this stays silent here as before.
         return []
 
     errors: list[str] = []
@@ -695,7 +749,9 @@ def _pass_authority_provenance_errors(text: str) -> list[str]:
     for source in auth_entries:
         normalized = source.strip().lower().replace("-", "_")
         if normalized not in AUTHORITY_SOURCES:
-            errors.append(f"invalid authority provenance source: {source}")
+            errors.append(
+                _with_emphasis_hint(f"invalid authority provenance source: {source}", source)
+            )
 
     is_grant_bearing = any(
         s.strip().lower().replace("-", "_") in GRANT_BEARING_SOURCES
@@ -713,11 +769,14 @@ def _pass_authority_provenance_errors(text: str) -> list[str]:
         elif is_grant_bearing:
             if not entries or entries[0].strip().lower().strip(".") in _ABSENT_VALUES:
                 source_label = auth_entries[0] if auth_entries else "grant"
-                errors.append(
+                message = (
                     f"authority provenance source {source_label} requires {requirement} "
                     f"({prefix.rstrip(':')}); record orchestrator-judgment instead "
                     "when the grant cannot be cited"
                 )
+                if not entries and _pass_emphasized_key(text, prefix):
+                    message += f"; a {prefix} field was found but {_EMPHASIS_HINT}"
+                errors.append(message)
 
     return errors
 
