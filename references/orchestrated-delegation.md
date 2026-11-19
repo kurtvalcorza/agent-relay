@@ -54,6 +54,14 @@ therefore declares where the authority came from, in a closed vocabulary:
 | `orchestrator-judgment` | No grant names this scope; the dispatching agent is authorizing it under its own authority. |
 | `none` | No authority is conveyed; the pass is read-only or advisory. |
 
+These tokens are durable provenance, not authority sources: they record how authority reached
+the pass. Whether a grant exists is settled by the semantic "valid authority source" of
+[`decision-authority.md`](decision-authority.md) § Delegation, an explicit statement by the
+current holder or a durable project policy. `owner-grant` and `delegated-grant` must trace to
+such a source through the grantor, verbatim scope and grant time required below;
+`orchestrator-judgment` rests only on authority the dispatching agent itself holds; `none`
+conveys nothing. A `Source:` token never substitutes for the semantic check.
+
 Normative requirements:
 
 1. `owner-grant` and `delegated-grant` MUST name the grantor, quote the granted scope

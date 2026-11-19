@@ -395,6 +395,16 @@ python -m unittest discover -s tests -t . -v
 
 CI also runs `python -m pytest` on Python 3.11, 3.12, and 3.13.
 
+Run every command from the repository root. CI also executes two test modules directly
+(`python -m tests.test_protocol_v04` and `python -m tests.test_protocol_v05`). That form
+finds the `tests` package only because Python puts the current directory on `sys.path`; with
+`PYTHONSAFEPATH=1` (or `python -P`) it does not, and the command fails with
+`No module named 'tests'`. Set `PYTHONPATH=.` for those invocations, as CI does:
+
+```bash
+PYTHONPATH=. python -m tests.test_protocol_v05
+```
+
 ## Agent pass records
 
 For consequential work, Agent Relay recommends leaving a compact durable record. The v0.3 minimum remains valid; v0.4 permits additional mission/authority/cycle metadata:

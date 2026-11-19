@@ -54,6 +54,17 @@ Requested change: delegate architecture decisions to Integrator
 Valid authority source: explicit user statement / durable project policy
 ```
 
+"Valid authority source" here is semantic: it names *what* can confer the authority (an
+explicit statement by the current holder, or a durable project policy). It is not the
+`Source:` field of a delegation brief. When authority is relayed to a subordinate pass, the
+brief records its provenance with the closed tokens
+`owner-grant | delegated-grant | orchestrator-judgment | none` defined in
+[`orchestrated-delegation.md`](orchestrated-delegation.md) § Authority provenance. A token
+records how the authority reached the pass; it does not create or widen it. An `owner-grant`
+or `delegated-grant` token stands only when its cited grantor, verbatim scope and grant time
+trace to a semantic source that satisfies this section; a grant that cannot be cited that
+way is recorded as `orchestrator-judgment`.
+
 A vague continuation instruction such as `continue` does not by itself transfer a different authority class.
 
 ### Standing authorization for a routine action
