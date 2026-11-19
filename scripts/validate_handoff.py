@@ -314,6 +314,23 @@ def _with_emphasis_hint(message: str, value: str) -> str:
     return f"{message} ({_EMPHASIS_HINT})" if _has_inline_emphasis(value) else message
 
 
+_EMPHASIS_ONLY = re.compile(r"[\s*_]+")
+
+
+def _is_emphasis_only(value: str) -> bool:
+    """Return whether a value is nothing but leftover emphasis markers (`**`, `__`, `*`, `_`).
+
+    `- **Grantor:**` parses as the value `**` because list-marker stripping eats
+    the opening markers. Such a value carries no text and counts as empty.
+    """
+
+    return bool(value.strip()) and bool(_EMPHASIS_ONLY.fullmatch(value))
+
+
+def _is_absent_value(value: str) -> bool:
+    return value.strip().lower().strip(".") in _ABSENT_VALUES or _is_emphasis_only(value)
+
+
 def _pass_field_entries(text: str, prefix: str) -> list[str]:
     """Read all entries for a field in a pass record outside fences."""
 
@@ -675,12 +692,18 @@ def _authority_provenance_errors(text: str) -> list[str]:
         errors.append(
             "duplicate authority provenance field: Source: (must appear exactly once)"
         )
-    elif not source_entries or source_entries[0].strip().lower() in {"", "n/a", "na"}:
+    elif (
+        not source_entries
+        or source_entries[0].strip().lower() in {"", "n/a", "na"}
+        or _is_emphasis_only(source_entries[0])
+    ):
         message = (
             "record must declare an authority provenance source "
             "(owner-grant | delegated-grant | orchestrator-judgment | none)"
         )
-        if not source_entries and _section_emphasized_key(text, section, "Source:"):
+        if (
+            source_entries and _is_emphasis_only(source_entries[0])
+        ) or (not source_entries and _section_emphasized_key(text, section, "Source:")):
             message += f"; a Source: field was found but {_EMPHASIS_HINT}"
         return [message]
 
@@ -707,14 +730,16 @@ def _authority_provenance_errors(text: str) -> list[str]:
                 f"duplicate authority provenance field: {prefix} (must appear exactly once)"
             )
         elif is_grant_bearing:
-            if not entries or entries[0].strip().lower().strip(".") in _ABSENT_VALUES:
+            if not entries or _is_absent_value(entries[0]):
                 source_label = source_entries[0] if source_entries else "grant"
                 message = (
                     f"authority provenance source {source_label} requires {requirement} "
                     f"({prefix.rstrip(':')}); record orchestrator-judgment instead "
                     "when the grant cannot be cited"
                 )
-                if not entries and _section_emphasized_key(text, section, prefix):
+                if (entries and _is_emphasis_only(entries[0])) or (
+                    not entries and _section_emphasized_key(text, section, prefix)
+                ):
                     message += f"; a {prefix} field was found but {_EMPHASIS_HINT}"
                 errors.append(message)
 
@@ -731,8 +756,15 @@ def _pass_authority_provenance_errors(text: str) -> list[str]:
 
     auth_entries = _pass_field_entries(text, "Authority provenance:")
     if not auth_entries:
-        # An emphasized `__Authority provenance:__` key is not parsed. The field
-        # is optional on pass records, so this stays silent here as before.
+        # The field is optional on pass records, but an emphasized
+        # `__Authority provenance:__` key is a declaration that failed to parse,
+        # not an absent one: refuse it rather than read it as no provenance.
+        if _pass_emphasized_key(text, "Authority provenance:"):
+            return [
+                "pass must declare an authority provenance source "
+                "(owner-grant | delegated-grant | orchestrator-judgment | none); "
+                f"an Authority provenance: field was found but {_EMPHASIS_HINT}"
+            ]
         return []
 
     errors: list[str] = []
@@ -740,11 +772,18 @@ def _pass_authority_provenance_errors(text: str) -> list[str]:
         errors.append(
             "duplicate pass field: Authority provenance: (must appear at most once)"
         )
-    elif not auth_entries[0] or auth_entries[0].strip().lower() in {"", "n/a", "na"}:
-        errors.append(
+    elif (
+        not auth_entries[0]
+        or auth_entries[0].strip().lower() in {"", "n/a", "na"}
+        or _is_emphasis_only(auth_entries[0])
+    ):
+        message = (
             "pass must declare an authority provenance source "
             "(owner-grant | delegated-grant | orchestrator-judgment | none)"
         )
+        if _is_emphasis_only(auth_entries[0]):
+            message += f"; an Authority provenance: field was found but {_EMPHASIS_HINT}"
+        errors.append(message)
 
     for source in auth_entries:
         normalized = source.strip().lower().replace("-", "_")
@@ -767,14 +806,16 @@ def _pass_authority_provenance_errors(text: str) -> list[str]:
         if len(entries) > 1:
             errors.append(f"duplicate pass field: {prefix} (must appear at most once)")
         elif is_grant_bearing:
-            if not entries or entries[0].strip().lower().strip(".") in _ABSENT_VALUES:
+            if not entries or _is_absent_value(entries[0]):
                 source_label = auth_entries[0] if auth_entries else "grant"
                 message = (
                     f"authority provenance source {source_label} requires {requirement} "
                     f"({prefix.rstrip(':')}); record orchestrator-judgment instead "
                     "when the grant cannot be cited"
                 )
-                if not entries and _pass_emphasized_key(text, prefix):
+                if (entries and _is_emphasis_only(entries[0])) or (
+                    not entries and _pass_emphasized_key(text, prefix)
+                ):
                     message += f"; a {prefix} field was found but {_EMPHASIS_HINT}"
                 errors.append(message)
 
